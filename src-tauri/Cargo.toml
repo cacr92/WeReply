@@ -22,8 +22,8 @@ anyhow = "1.0"
 keyring = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 specta = { version = "1", features = ["serde", "functions"] }
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+tauri = { version = "2.9.5", features = [] }
+tauri-plugin-opener = "2.5.3"
 tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
