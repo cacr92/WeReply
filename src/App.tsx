@@ -151,6 +151,7 @@ function App() {
       if (outcome.status === "connected") {
         message.success(outcome.message);
         setModelLoading(true);
+        const previousModel = selectedModel;
         try {
           const modelsRes = await commands.listModels();
           if (modelsRes.success && Array.isArray(modelsRes.data)) {
@@ -162,6 +163,7 @@ function App() {
               const saveRes = await commands.setDeepseekModel(selection.selected);
               if (!saveRes.success) {
                 message.error(saveRes.message || "模型保存失败");
+                setSelectedModel(previousModel);
               }
             }
           } else {
