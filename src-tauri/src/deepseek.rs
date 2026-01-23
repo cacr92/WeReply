@@ -11,7 +11,7 @@ const SYSTEM_PROMPT: &str = "你是回复建议助手。请根据对话内容生
 const VALIDATION_PROMPT: &str = "请回复一个简短确认词，用于验证连接。";
 
 fn cap_timeout_ms(timeout_ms: u64) -> u64 {
-    timeout_ms.min(8_000).max(2_000)
+    timeout_ms.clamp(2_000, 8_000)
 }
 
 pub fn build_request(
