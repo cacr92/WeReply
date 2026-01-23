@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- Windows 打包内置嵌入式 Python 3.12，并自动安装 wxauto 等依赖，运行时优先使用内置 Python。
 - Windows Agent 启动前自动安装 Python 依赖（wxauto/pyautogui/pyperclip），缺失时自动尝试安装并复检。
 - 设置默认运行二进制为 `wereply`，避免 `cargo run` 需要手动指定 `--bin`。
 - 修复保存与诊断 API Key 时参数名不匹配导致的调用失败。

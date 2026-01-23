@@ -29,6 +29,13 @@ pub struct AgentHandle {
     _stderr_handle: JoinHandle<()>,
 }
 
+struct AgentCommand {
+    command: String,
+    args: Vec<String>,
+    workdir: PathBuf,
+    env: Vec<(String, String)>,
+}
+
 impl AgentHandle {
     pub fn clone_sender(&self) -> mpsc::Sender<IpcEnvelope> {
         self.sender.clone()
@@ -46,10 +53,13 @@ pub async fn start_agent(app: AppHandle, state: Arc<Mutex<AppState>>) -> Result<
     if cfg!(target_os = "windows") {
         ensure_windows_agent_dependencies(&app).await?;
     }
-    let (command, args, workdir) = resolve_agent_command(&app)?;
-    let mut child = Command::new(command)
-        .args(args)
-        .current_dir(workdir)
+    let agent = resolve_agent_command(&app)?;
+    let mut cmd = Command::new(&agent.command);
+    cmd.args(&agent.args).current_dir(&agent.workdir);
+    for (key, value) in &agent.env {
+        cmd.env(key, value);
+    }
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -319,24 +329,27 @@ fn emit_error(app: &AppHandle, payload: ErrorPayload) {
     let _ = app.emit("error.raised", payload);
 }
 
-fn resolve_agent_command(app: &AppHandle) -> Result<(String, Vec<String>, PathBuf)> {
+fn resolve_agent_command(app: &AppHandle) -> Result<AgentCommand> {
     let base = find_agent_root(app)?;
     let platform_agents = base.join("platform_agents");
 
     if cfg!(target_os = "windows") {
         let script = platform_agents.join("windows").join("wxauto_agent.py");
-        Ok((
-            "python".to_string(),
-            vec![script.to_string_lossy().to_string()],
-            base,
-        ))
+        let (python, env) = resolve_windows_python(app, &base)?;
+        Ok(AgentCommand {
+            command: python,
+            args: vec![script.to_string_lossy().to_string()],
+            workdir: base,
+            env,
+        })
     } else if cfg!(target_os = "macos") {
         let script = platform_agents.join("macos").join("wechat_agent.swift");
-        Ok((
-            "swift".to_string(),
-            vec![script.to_string_lossy().to_string()],
-            base,
-        ))
+        Ok(AgentCommand {
+            command: "swift".to_string(),
+            args: vec![script.to_string_lossy().to_string()],
+            workdir: base,
+            env: Vec::new(),
+        })
     } else {
         anyhow::bail!("当前系统不支持 Agent");
     }
@@ -398,10 +411,69 @@ fn windows_requirements_path(base: &Path) -> PathBuf {
         .join("requirements.txt")
 }
 
-async fn run_python_command(python: &str, args: Vec<String>, workdir: &Path) -> Result<()> {
-    let output = Command::new(python)
-        .args(args)
-        .current_dir(workdir)
+fn embedded_python_paths(resource_root: &Path) -> (PathBuf, PathBuf) {
+    (
+        resource_root.join("python").join("python.exe"),
+        resource_root
+            .join("python")
+            .join("Lib")
+            .join("site-packages"),
+    )
+}
+
+fn embedded_python_exists(resource_root: &Path) -> bool {
+    let (python, _) = embedded_python_paths(resource_root);
+    python.exists()
+}
+
+fn embedded_python_env(resource_root: &Path) -> Vec<(String, String)> {
+    let (python, site) = embedded_python_paths(resource_root);
+    let python_home = python
+        .parent()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_default();
+    vec![
+        ("PYTHONHOME".to_string(), python_home),
+        ("PYTHONPATH".to_string(), site.to_string_lossy().to_string()),
+        ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+    ]
+}
+
+fn resolve_windows_python(app: &AppHandle, base: &Path) -> Result<(String, Vec<(String, String)>)> {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        if embedded_python_exists(&resource_dir) {
+            let (python, _) = embedded_python_paths(&resource_dir);
+            return Ok((
+                python.to_string_lossy().to_string(),
+                embedded_python_env(&resource_dir),
+            ));
+        }
+    }
+
+    let repo_resources = base.join("src-tauri").join("resources");
+    if embedded_python_exists(&repo_resources) {
+        let (python, _) = embedded_python_paths(&repo_resources);
+        return Ok((
+            python.to_string_lossy().to_string(),
+            embedded_python_env(&repo_resources),
+        ));
+    }
+
+    Ok(("python".to_string(), Vec::new()))
+}
+
+async fn run_python_command(
+    python: &str,
+    args: Vec<String>,
+    workdir: &Path,
+    env: &[(String, String)],
+) -> Result<()> {
+    let mut cmd = Command::new(python);
+    cmd.args(args).current_dir(workdir);
+    for (key, value) in env {
+        cmd.env(key, value);
+    }
+    let output = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -430,14 +502,22 @@ async fn ensure_windows_agent_dependencies(app: &AppHandle) -> Result<()> {
     }
 
     let base = find_agent_root(app)?;
+    let (python, env) = resolve_windows_python(app, &base)?;
     let requirements = windows_requirements_path(&base);
     if !requirements.exists() {
         anyhow::bail!("未找到 Windows Agent 依赖列表");
     }
 
     info!("检测 Windows Agent Python 依赖");
-    let python = "python";
-    if run_python_command(python, python_check_args(WINDOWS_AGENT_MODULES), &base).await.is_ok() {
+    if run_python_command(
+        &python,
+        python_check_args(WINDOWS_AGENT_MODULES),
+        &base,
+        &env,
+    )
+    .await
+    .is_ok()
+    {
         WINDOWS_DEP_READY.store(true, Ordering::SeqCst);
         return Ok(());
     }
@@ -446,9 +526,10 @@ async fn ensure_windows_agent_dependencies(app: &AppHandle) -> Result<()> {
     let install = timeout(
         Duration::from_secs(WINDOWS_DEP_INSTALL_TIMEOUT_SECONDS),
         run_python_command(
-            python,
+            &python,
             pip_install_args(&requirements.to_string_lossy()),
             &base,
+            &env,
         ),
     )
     .await
@@ -457,7 +538,12 @@ async fn ensure_windows_agent_dependencies(app: &AppHandle) -> Result<()> {
     install.context("自动安装依赖失败")?;
 
     info!("依赖安装完成，进行复检");
-    run_python_command(python, python_check_args(WINDOWS_AGENT_MODULES), &base)
+    run_python_command(
+        &python,
+        python_check_args(WINDOWS_AGENT_MODULES),
+        &base,
+        &env,
+    )
         .await
         .context("依赖复检失败")?;
 
@@ -497,5 +583,30 @@ mod tests {
     fn python_check_args_are_stable_for_three_modules() {
         let args = python_check_args(&["wxauto", "pyautogui", "pyperclip"]);
         assert_eq!(args.len(), 2);
+    }
+
+    #[test]
+    fn embedded_python_paths_use_resource_layout() {
+        let base = std::path::Path::new("C:/app/resources");
+        let (python, site) = embedded_python_paths(base);
+        assert!(python.ends_with("python/python.exe"));
+        assert!(site.ends_with("python/Lib/site-packages"));
+    }
+
+    #[test]
+    fn embedded_python_env_sets_pythonhome_and_pythonpath() {
+        let base = std::path::Path::new("C:/app/resources");
+        let env = embedded_python_env(base);
+        assert!(env.iter().any(|(k, _)| k == "PYTHONHOME"));
+        assert!(env.iter().any(|(k, _)| k == "PYTHONPATH"));
+    }
+
+    #[test]
+    fn embedded_python_exists_flag_checks_exe_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path();
+        std::fs::create_dir_all(base.join("python")).unwrap();
+        std::fs::write(base.join("python").join("python.exe"), "").unwrap();
+        assert!(embedded_python_exists(base));
     }
 }
