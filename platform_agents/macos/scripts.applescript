@@ -1,0 +1,1 @@
+-- Placeholder AppleScript for focusing WeChat input and pasting.
