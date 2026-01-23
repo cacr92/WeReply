@@ -13,7 +13,9 @@ use crate::config::save_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
 use crate::ipc::{InputWritePayload, ListenControlPayload};
-use crate::types::{api_err, api_ok, ApiResponse, Config, Platform, RuntimeState, Status};
+use crate::types::{
+    api_err, api_ok, ApiResponse, Config, DeepseekDiagnostics, Platform, RuntimeState, Status,
+};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
@@ -256,6 +258,29 @@ async fn delete_api_key() -> Result<ApiResponse<()>, String> {
     })
 }
 
+#[tauri::command]
+#[specta::specta]
+async fn diagnose_deepseek(
+    state: State<'_, SharedState>,
+    api_key: Option<String>,
+) -> Result<ApiResponse<DeepseekDiagnostics>, String> {
+    let key = match api_key {
+        Some(key) if !key.trim().is_empty() => key,
+        _ => match ApiKeyManager::get_deepseek_api_key() {
+            Ok(key) => key,
+            Err(err) => return Ok(api_err(err.to_string())),
+        },
+    };
+    let config = {
+        let guard = state.lock().await;
+        guard.config.clone()
+    };
+    match deepseek::diagnose(&config, &key).await {
+        Ok(result) => Ok(api_ok(result)),
+        Err(err) => Ok(api_err(err.to_string())),
+    }
+}
+
 async fn ensure_agent_running(app: AppHandle, state: SharedState) -> anyhow::Result<()> {
     let exists = {
         let guard = state.lock().await;
@@ -356,6 +381,7 @@ pub fn run() {
             save_api_key,
             get_api_key_status,
             delete_api_key,
+            diagnose_deepseek,
             list_models,
             set_deepseek_model
         ])

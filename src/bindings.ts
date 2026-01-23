@@ -43,6 +43,19 @@ export interface ErrorPayload {
   recoverable: boolean;
 }
 
+export interface DeepseekEndpointStatus {
+  ok: boolean;
+  status: number | null;
+  message: string;
+}
+
+export interface DeepseekDiagnostics {
+  base_url: string;
+  model: string;
+  chat: DeepseekEndpointStatus;
+  models: DeepseekEndpointStatus;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message: string;
@@ -65,6 +78,8 @@ export const commands = {
   getApiKeyStatus: (): Promise<ApiResponse<boolean>> =>
     invoke("get_api_key_status"),
   deleteApiKey: (): Promise<ApiResponse<null>> => invoke("delete_api_key"),
+  diagnoseDeepseek: (apiKey?: string): Promise<ApiResponse<DeepseekDiagnostics>> =>
+    invoke("diagnose_deepseek", apiKey ? { api_key: apiKey } : {}),
   listModels: (): Promise<ApiResponse<string[]>> => invoke("list_models"),
   setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>
     invoke("set_deepseek_model", { model }),

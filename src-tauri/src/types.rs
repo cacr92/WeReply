@@ -78,6 +78,23 @@ pub struct ErrorPayload {
 
 #[derive(Debug, Serialize, Deserialize, Type, Clone)]
 #[specta(inline)]
+pub struct DeepseekEndpointStatus {
+    pub ok: bool,
+    pub status: Option<u16>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
+pub struct DeepseekDiagnostics {
+    pub base_url: String,
+    pub model: String,
+    pub chat: DeepseekEndpointStatus,
+    pub models: DeepseekEndpointStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub message: String,

@@ -1,4 +1,6 @@
-use crate::types::{Config, Suggestion, SuggestionStyle};
+use crate::types::{
+    Config, DeepseekDiagnostics, DeepseekEndpointStatus, Suggestion, SuggestionStyle,
+};
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -65,6 +67,31 @@ fn build_chat_url(base_url: &str) -> String {
 
 fn build_models_url(base_url: &str) -> String {
     format!("{}/models", base_url.trim_end_matches('/'))
+}
+
+fn build_ok_status(status: reqwest::StatusCode) -> DeepseekEndpointStatus {
+    DeepseekEndpointStatus {
+        ok: true,
+        status: Some(status.as_u16()),
+        message: "ok".to_string(),
+    }
+}
+
+fn build_error_status(status: Option<reqwest::StatusCode>, message: impl Into<String>) -> DeepseekEndpointStatus {
+    DeepseekEndpointStatus {
+        ok: false,
+        status: status.map(|code| code.as_u16()),
+        message: message.into(),
+    }
+}
+
+fn format_http_error(status: reqwest::StatusCode, raw: &str) -> String {
+    let detail: String = raw.chars().take(200).collect();
+    if detail.is_empty() {
+        format!("HTTP {}", status)
+    } else {
+        format!("HTTP {} {}", status, detail)
+    }
 }
 
 fn parse_models(raw: &str) -> Result<Vec<String>> {
@@ -179,6 +206,91 @@ pub async fn list_models(config: &Config, api_key: &str) -> Result<Vec<String>> 
     }
     let parsed = parse_models(&raw)?;
     Ok(normalize_models(parsed))
+}
+
+pub async fn diagnose(config: &Config, api_key: &str) -> Result<DeepseekDiagnostics> {
+    let timeout_ms = cap_timeout_ms(config.timeout_ms);
+    let client = Client::builder()
+        .timeout(Duration::from_millis(timeout_ms))
+        .build()
+        .context("创建 HTTP 客户端失败")?;
+    let chat = probe_chat(&client, config, api_key, timeout_ms).await;
+    let models = probe_models(&client, config, api_key, timeout_ms).await;
+    Ok(DeepseekDiagnostics {
+        base_url: config.base_url.clone(),
+        model: config.deepseek_model.clone(),
+        chat,
+        models,
+    })
+}
+
+async fn probe_chat(
+    client: &Client,
+    config: &Config,
+    api_key: &str,
+    timeout_ms: u64,
+) -> DeepseekEndpointStatus {
+    let url = build_chat_url(&config.base_url);
+    let request = build_validation_request("ping", &config.deepseek_model);
+    let response = tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        client
+            .post(url)
+            .bearer_auth(api_key)
+            .json(&request)
+            .send(),
+    )
+    .await;
+
+    let response = match response {
+        Err(_) => return build_error_status(None, "连接超时"),
+        Ok(Err(err)) => return build_error_status(None, err.to_string()),
+        Ok(Ok(response)) => response,
+    };
+
+    let status = response.status();
+    let raw = match response.text().await {
+        Ok(raw) => raw,
+        Err(err) => return build_error_status(Some(status), err.to_string()),
+    };
+
+    if status.is_success() {
+        build_ok_status(status)
+    } else {
+        build_error_status(Some(status), format_http_error(status, &raw))
+    }
+}
+
+async fn probe_models(
+    client: &Client,
+    config: &Config,
+    api_key: &str,
+    timeout_ms: u64,
+) -> DeepseekEndpointStatus {
+    let url = build_models_url(&config.base_url);
+    let response = tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        client.get(url).bearer_auth(api_key).send(),
+    )
+    .await;
+
+    let response = match response {
+        Err(_) => return build_error_status(None, "连接超时"),
+        Ok(Err(err)) => return build_error_status(None, err.to_string()),
+        Ok(Ok(response)) => response,
+    };
+
+    let status = response.status();
+    let raw = match response.text().await {
+        Ok(raw) => raw,
+        Err(err) => return build_error_status(Some(status), err.to_string()),
+    };
+
+    if status.is_success() {
+        build_ok_status(status)
+    } else {
+        build_error_status(Some(status), format_http_error(status, &raw))
+    }
 }
 
 fn build_prompt(context_messages: &[String]) -> String {
