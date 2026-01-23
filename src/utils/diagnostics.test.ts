@@ -28,4 +28,11 @@ describe("summarize diagnostics", () => {
     expect(result.lines[0]).toContain("401");
     expect(result.lines[0]).toContain("Authentication Fails");
   });
+
+  it("returns fallback summary when diagnostics missing", () => {
+    const result = summarizeDiagnostics(null, "诊断失败");
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe("诊断失败");
+    expect(result.lines[0]).toContain("诊断失败");
+  });
 });

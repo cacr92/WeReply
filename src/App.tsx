@@ -12,6 +12,7 @@ import type {
 import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
 import { getApiKeyStatusLabel, resolveApiKeySaveOutcome } from "./utils/apiKey";
+import { getApiKeyInputType, getApiKeyToggleLabel } from "./utils/apiKeyVisibility";
 import { summarizeDiagnostics } from "./utils/diagnostics";
 import { getStyleLabel } from "./utils/labels";
 import {
@@ -35,6 +36,8 @@ function App() {
   const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>("idle");
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [lastChatId, setLastChatId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
@@ -42,7 +45,8 @@ function App() {
   const [modelLoading, setModelLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DeepseekDiagnostics | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
-  const diagnosticsSummary = diagnostics ? summarizeDiagnostics(diagnostics) : null;
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const diagnosticsSummary = summarizeDiagnostics(diagnostics, diagnosticsError || undefined);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -155,6 +159,7 @@ function App() {
       const outcome = resolveApiKeySaveOutcome(res);
       setApiKeyStatus(outcome.status);
       setApiKeySet(outcome.apiKeySet);
+      setApiKeyError(outcome.status === "failed" ? outcome.message : null);
       if (outcome.clearInput) {
         setApiKeyInput("");
       }
@@ -193,6 +198,7 @@ function App() {
       const outcome = resolveApiKeySaveOutcome(null, err);
       setApiKeyStatus(outcome.status);
       setApiKeySet(outcome.apiKeySet);
+      setApiKeyError(outcome.message);
       message.error(outcome.message);
     }
   }, [apiKeyInput, selectedModel]);
@@ -204,6 +210,7 @@ function App() {
       setApiKeySet(false);
       setApiKeyStatus("idle");
       setDiagnostics(null);
+      setApiKeyError(null);
     } else {
       message.error(res.message || "删除失败");
     }
@@ -220,6 +227,7 @@ function App() {
       const res = await commands.diagnoseDeepseek(trimmed || undefined);
       if (res.success && res.data) {
         setDiagnostics(res.data);
+        setDiagnosticsError(null);
         const summary = summarizeDiagnostics(res.data);
         if (summary.ok) {
           message.success(summary.message);
@@ -227,10 +235,15 @@ function App() {
           message.error(summary.message);
         }
       } else {
-        message.error(res.message || "连接诊断失败");
+        const messageText = res.message || "连接诊断失败";
+        setDiagnostics(null);
+        setDiagnosticsError(messageText);
+        message.error(messageText);
       }
     } catch (err) {
       const fallback = err instanceof Error ? err.message : "连接诊断失败";
+      setDiagnostics(null);
+      setDiagnosticsError(fallback);
       message.error(fallback);
     } finally {
       setDiagnosing(false);
@@ -334,11 +347,17 @@ function App() {
           </div>
           <div className="api-key">
             <input
-              type="password"
+              type={getApiKeyInputType(apiKeyVisible)}
               placeholder="sk-..."
               value={apiKeyInput}
               onChange={(event) => setApiKeyInput(event.target.value)}
             />
+            <button
+              className="ghost api-key-toggle"
+              onClick={() => setApiKeyVisible((prev) => !prev)}
+            >
+              {getApiKeyToggleLabel(apiKeyVisible)}
+            </button>
             <button onClick={handleSaveApiKey} disabled={apiKeyStatus === "connecting"}>
               保存并连接
             </button>
@@ -350,12 +369,13 @@ function App() {
                 删除密钥
               </button>
             ) : null}
-            {diagnosticsSummary ? (
+            {apiKeyError ? <p className="api-error">{apiKeyError}</p> : null}
+            {(diagnostics || diagnosticsError) && diagnosticsSummary ? (
               <div className="diagnostics">
                 <p>{diagnosticsSummary.message}</p>
                 <ul>
-                  <li>Base URL：{diagnostics?.base_url}</li>
-                  <li>模型：{diagnostics?.model}</li>
+                  {diagnostics ? <li>Base URL：{diagnostics.base_url}</li> : null}
+                  {diagnostics ? <li>模型：{diagnostics.model}</li> : null}
                   {diagnosticsSummary.lines.map((line) => (
                     <li key={line}>{line}</li>
                   ))}

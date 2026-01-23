@@ -22,13 +22,21 @@ const formatLine = (label: string, status: DiagnosticStatus): string => {
 };
 
 export const summarizeDiagnostics = (
-  diagnostics: DeepseekDiagnostics,
+  diagnostics: DeepseekDiagnostics | null,
+  errorMessage?: string,
 ): { ok: boolean; message: string; lines: string[] } => {
+  if (!diagnostics) {
+    const message = errorMessage || "连接诊断失败";
+    return { ok: false, message, lines: [message] };
+  }
+
   const lines = [
     formatLine("聊天接口", diagnostics.chat),
     formatLine("模型接口", diagnostics.models),
   ];
   const ok = diagnostics.chat.ok && diagnostics.models.ok;
-  const message = ok ? "连接诊断通过" : lines.filter((_, idx) => ![diagnostics.chat.ok, diagnostics.models.ok][idx]).join("；");
+  const message = ok
+    ? "连接诊断通过"
+    : lines.filter((_, idx) => ![diagnostics.chat.ok, diagnostics.models.ok][idx]).join("；");
   return { ok, message, lines };
 };
