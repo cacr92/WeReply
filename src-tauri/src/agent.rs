@@ -27,6 +27,10 @@ pub struct AgentHandle {
 }
 
 impl AgentHandle {
+    pub fn clone_sender(&self) -> mpsc::Sender<IpcEnvelope> {
+        self.sender.clone()
+    }
+
     pub async fn send(&self, message: IpcEnvelope) -> Result<()> {
         self.sender
             .send(message)

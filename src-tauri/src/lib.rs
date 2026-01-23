@@ -11,7 +11,7 @@ use crate::agent::start_agent;
 use crate::config::load_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
-use crate::ipc::InputWritePayload;
+use crate::ipc::{InputWritePayload, ListenControlPayload};
 use crate::types::{api_err, api_ok, ApiResponse, Config, Platform, RuntimeState, Status};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -60,6 +60,9 @@ async fn start_listening(
     if let Err(err) = ensure_agent_running(app.clone(), state.inner().clone()).await {
         return Ok(api_err(err.to_string()));
     }
+    if let Err(err) = send_listen_control(state.inner().clone(), "listen.start", true).await {
+        return Ok(api_err(err));
+    }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
     Ok(api_ok(()))
 }
@@ -70,6 +73,9 @@ async fn stop_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    if let Err(err) = send_listen_control(state.inner().clone(), "listen.stop", false).await {
+        return Ok(api_err(err));
+    }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Idle, "").await;
     Ok(api_ok(()))
 }
@@ -80,6 +86,9 @@ async fn pause_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    if let Err(err) = send_listen_control(state.inner().clone(), "listen.pause", false).await {
+        return Ok(api_err(err));
+    }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Paused, "").await;
     Ok(api_ok(()))
 }
@@ -90,6 +99,9 @@ async fn resume_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    if let Err(err) = send_listen_control(state.inner().clone(), "listen.resume", true).await {
+        return Ok(api_err(err));
+    }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
     Ok(api_ok(()))
 }
@@ -196,6 +208,33 @@ async fn ensure_agent_running(app: AppHandle, state: SharedState) -> anyhow::Res
             Err(err)
         }
     }
+}
+
+async fn send_listen_control(
+    state: SharedState,
+    message_type: &str,
+    include_poll_interval: bool,
+) -> Result<(), String> {
+    let (sender, poll_interval_ms) = {
+        let guard = state.lock().await;
+        let Some(agent) = guard.agent.as_ref() else {
+            return Err("Agent 未连接".to_string());
+        };
+        (
+            agent.clone_sender(),
+            if include_poll_interval {
+                Some(guard.config.poll_interval_ms)
+            } else {
+                None
+            },
+        )
+    };
+    let payload = ListenControlPayload { poll_interval_ms };
+    let payload_value = serde_json::to_value(payload).map_err(|err| err.to_string())?;
+    sender
+        .send(crate::ipc::IpcEnvelope::new(message_type, payload_value))
+        .await
+        .map_err(|err| err.to_string())
 }
 
 async fn set_runtime_state(

@@ -61,6 +61,12 @@ pub struct InputWritePayload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ListenControlPayload {
+    #[serde(default)]
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InputResultPayload {
     pub ok: bool,
     #[serde(default)]
@@ -160,5 +166,14 @@ mod tests {
             msg_id: None,
         };
         assert!(validate_message_new(&payload).is_err());
+    }
+
+    #[test]
+    fn listen_control_payload_serializes() {
+        let payload = ListenControlPayload {
+            poll_interval_ms: Some(800),
+        };
+        let value = serde_json::to_value(payload).unwrap();
+        assert_eq!(value["poll_interval_ms"], 800);
     }
 }
