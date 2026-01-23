@@ -50,20 +50,25 @@ async fn start_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    info!("收到开始监听请求");
     {
         let guard = state.lock().await;
         if guard.status.state == RuntimeState::Listening {
+            info!("已在监听中，忽略重复请求");
             return Ok(api_ok(()));
         }
     }
 
     if let Err(err) = ensure_agent_running(app.clone(), state.inner().clone()).await {
+        warn!("启动 Agent 失败: {}", err);
         return Ok(api_err(err.to_string()));
     }
     if let Err(err) = send_listen_control(state.inner().clone(), "listen.start", true).await {
+        warn!("发送监听指令失败: {}", err);
         return Ok(api_err(err));
     }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
+    info!("监听已启动");
     Ok(api_ok(()))
 }
 
@@ -73,10 +78,13 @@ async fn stop_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    info!("收到停止监听请求");
     if let Err(err) = send_listen_control(state.inner().clone(), "listen.stop", false).await {
+        warn!("发送停止监听指令失败: {}", err);
         return Ok(api_err(err));
     }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Idle, "").await;
+    info!("监听已停止");
     Ok(api_ok(()))
 }
 
@@ -86,10 +94,13 @@ async fn pause_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    info!("收到暂停监听请求");
     if let Err(err) = send_listen_control(state.inner().clone(), "listen.pause", false).await {
+        warn!("发送暂停监听指令失败: {}", err);
         return Ok(api_err(err));
     }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Paused, "").await;
+    info!("监听已暂停");
     Ok(api_ok(()))
 }
 
@@ -99,10 +110,13 @@ async fn resume_listening(
     app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
+    info!("收到恢复监听请求");
     if let Err(err) = send_listen_control(state.inner().clone(), "listen.resume", true).await {
+        warn!("发送恢复监听指令失败: {}", err);
         return Ok(api_err(err));
     }
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
+    info!("监听已恢复");
     Ok(api_ok(()))
 }
 
@@ -114,17 +128,21 @@ async fn write_suggestion(
     text: String,
 ) -> Result<ApiResponse<()>, String> {
     if chat_id.trim().is_empty() {
+        warn!("写入建议失败: chat_id 为空");
         return Ok(api_err("chat_id 不能为空"));
     }
     if text.trim().is_empty() {
+        warn!("写入建议失败: 回复内容为空");
         return Ok(api_err("回复内容不能为空"));
     }
     if text.len() > 2000 {
+        warn!("写入建议失败: 回复内容过长");
         return Ok(api_err("回复内容过长"));
     }
 
     let guard = state.lock().await;
     let Some(agent) = guard.agent.as_ref() else {
+        warn!("写入建议失败: Agent 未连接");
         return Ok(api_err("Agent 未连接"));
     };
 
@@ -143,8 +161,10 @@ async fn write_suggestion(
             .send(crate::ipc::IpcEnvelope::new("input.write", payload_value))
             .await
     {
+        warn!("写入建议失败: {}", err);
         return Ok(api_err(err.to_string()));
     }
+    info!("写入建议完成");
     Ok(api_ok(()))
 }
 
@@ -154,7 +174,9 @@ async fn save_api_key(
     state: State<'_, SharedState>,
     api_key: String,
 ) -> Result<ApiResponse<()>, String> {
+    info!("保存 API 密钥");
     if let Err(err) = ApiKeyManager::set_deepseek_api_key(&api_key) {
+        warn!("保存 API 密钥失败: {}", err);
         return Ok(api_err(err.to_string()));
     }
 
@@ -163,8 +185,12 @@ async fn save_api_key(
         guard.config.clone()
     };
     match deepseek::validate_api_key(&config, &api_key).await {
-        Ok(()) => Ok(api_ok(())),
+        Ok(()) => {
+            info!("API 密钥验证成功");
+            Ok(api_ok(()))
+        }
         Err(err) => {
+            warn!("API 密钥验证失败: {}", err);
             let _ = ApiKeyManager::delete_deepseek_api_key();
             Ok(api_err(err.to_string()))
         }
@@ -183,8 +209,12 @@ async fn get_api_key_status() -> Result<ApiResponse<bool>, String> {
 #[tauri::command]
 #[specta::specta]
 async fn delete_api_key() -> Result<ApiResponse<()>, String> {
+    info!("删除 API 密钥");
     Ok(match ApiKeyManager::delete_deepseek_api_key() {
-        Ok(()) => api_ok(()),
+        Ok(()) => {
+            info!("API 密钥已删除");
+            api_ok(())
+        }
         Err(err) => api_err(err.to_string()),
     })
 }
