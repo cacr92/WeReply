@@ -1,3 +1,5 @@
+import type { ApiResponse } from "../bindings";
+
 export type ApiKeyStatus = "idle" | "connecting" | "connected" | "failed";
 
 const STATUS_LABEL: Record<ApiKeyStatus, string> = {
@@ -9,3 +11,26 @@ const STATUS_LABEL: Record<ApiKeyStatus, string> = {
 
 export const getApiKeyStatusLabel = (status: ApiKeyStatus): string =>
   STATUS_LABEL[status] ?? "未知";
+
+export const resolveApiKeySaveOutcome = (
+  result: ApiResponse<null> | null,
+  error?: unknown,
+): { status: ApiKeyStatus; apiKeySet: boolean; clearInput: boolean; message: string } => {
+  if (error) {
+    return { status: "failed", apiKeySet: false, clearInput: false, message: "连接失败" };
+  }
+  if (result?.success) {
+    return {
+      status: "connected",
+      apiKeySet: true,
+      clearInput: true,
+      message: "API 密钥已保存并连接成功",
+    };
+  }
+  return {
+    status: "failed",
+    apiKeySet: false,
+    clearInput: false,
+    message: result?.message || "连接失败",
+  };
+};

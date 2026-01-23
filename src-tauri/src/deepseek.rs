@@ -10,6 +10,10 @@ const SYSTEM_PROMPT: &str = "你是回复建议助手。请根据对话内容生
 中性、轻松风格。返回 JSON 数组，每个元素包含 style(formal|neutral|casual) 与 text。";
 const VALIDATION_PROMPT: &str = "请回复一个简短确认词，用于验证连接。";
 
+fn cap_timeout_ms(timeout_ms: u64) -> u64 {
+    timeout_ms.clamp(2_000, 8_000)
+}
+
 pub fn build_request(
     user_input: &str,
     suggestion_count: u32,
@@ -45,8 +49,10 @@ pub fn build_validation_request(user_input: &str, model: &str) -> Value {
 }
 
 pub async fn validate_api_key(config: &Config, api_key: &str) -> Result<()> {
+    let timeout_ms = cap_timeout_ms(config.timeout_ms);
+    info!("开始验证 DeepSeek API 密钥");
     let client = Client::builder()
-        .timeout(Duration::from_millis(config.timeout_ms.min(8_000)))
+        .timeout(Duration::from_millis(timeout_ms))
         .build()
         .context("创建 HTTP 客户端失败")?;
     let url = format!(
@@ -55,19 +61,25 @@ pub async fn validate_api_key(config: &Config, api_key: &str) -> Result<()> {
     );
     let request = build_validation_request("ping", &config.deepseek_model);
 
-    let response = client
-        .post(url)
-        .bearer_auth(api_key)
-        .json(&request)
-        .send()
-        .await
-        .context("DeepSeek 连接失败")?;
+    let response = tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        client
+            .post(url)
+            .bearer_auth(api_key)
+            .json(&request)
+            .send(),
+    )
+    .await
+    .context("DeepSeek 连接超时")?
+    .context("DeepSeek 连接失败")?;
     let status = response.status();
     let raw = response.text().await.context("读取 DeepSeek 响应失败")?;
     if !status.is_success() {
         let detail: String = raw.chars().take(200).collect();
+        warn!("DeepSeek 验证失败: {}", status);
         anyhow::bail!("DeepSeek 验证失败: {} {}", status, detail);
     }
+    info!("DeepSeek 验证成功");
     Ok(())
 }
 
@@ -238,5 +250,10 @@ mod tests {
         let req = build_validation_request("ping", "deepseek-chat");
         assert_eq!(req["n"], 1);
         assert_eq!(req["temperature"], 0.0);
+    }
+
+    #[test]
+    fn normalize_timeout_caps() {
+        assert_eq!(cap_timeout_ms(12_000), 8_000);
     }
 }

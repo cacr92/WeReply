@@ -147,6 +147,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
     match envelope.r#type.as_str() {
         "agent.ready" => {
             if let Ok(payload) = serde_json::from_value::<AgentReadyPayload>(envelope.payload) {
+                info!("Agent 就绪: {}", payload.platform);
                 let platform = match payload.platform.as_str() {
                     "windows" => Platform::Windows,
                     "macos" => Platform::Macos,
@@ -158,6 +159,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
         }
         "agent.status" => {
             if let Ok(payload) = serde_json::from_value::<AgentStatusPayload>(envelope.payload) {
+                info!("Agent 状态更新: {}", payload.state);
                 let runtime = match payload.state.as_str() {
                     "listening" => RuntimeState::Listening,
                     "paused" => RuntimeState::Paused,
@@ -169,6 +171,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
         }
         "agent.error" => {
             if let Ok(payload) = serde_json::from_value::<AgentErrorPayload>(envelope.payload) {
+                warn!("Agent 错误: {}", payload.message);
                 update_state(state, app, RuntimeState::Error, payload.message.clone()).await;
                 emit_error(
                     app,
@@ -190,6 +193,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                     return;
                 }
                 record_message(state, &payload).await;
+                info!("收到新消息，生成回复建议");
                 update_state(state, app, RuntimeState::Generating, "").await;
                 let context = {
                     let guard = state.lock().await;
@@ -207,6 +211,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                         .await
                         .unwrap_or_else(|_| Vec::new());
                     if suggestions.is_empty() {
+                        warn!("生成建议为空");
                         emit_error(
                             &app_handle,
                             ErrorPayload {
@@ -216,6 +221,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                             },
                         );
                     } else {
+                        info!("生成建议完成: {} 条", suggestions.len());
                         let payload = SuggestionsUpdated {
                             chat_id: payload.chat_id.clone(),
                             suggestions,
