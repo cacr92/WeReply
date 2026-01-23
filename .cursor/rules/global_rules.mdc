@@ -2,7 +2,7 @@
 alwaysApply: true
 ---
 
-# 饲料配方系统 
+# WeReply 微信回复建议助手 
 
 > **快速参考**: 本文件包含核心工作流和编程规范。详细技术规范请参考 `.claude/rules/` 目录。
 
@@ -71,11 +71,11 @@ alwaysApply: true
 
 | 文件特征 | 自动调用 Skill | 用途 |
 |---------|---------------|-----|
-| `src/**/formula/**/*.rs` | `formula-calculation` | 配方计算逻辑规范 |
+| `src/wechat/**/*.rs` | `wechat-automation` | 微信监听与自动化规范 |
+| `src/ai/**/*.rs` | `deepseek-integration` | DeepSeek API 集成规范 |
 | `frontend/src/**/*.tsx` | `react-typescript-development` | React TypeScript 规范 |
 | `src/**/commands.rs` | `tauri-development` | Tauri 命令规范 |
-| `src/**/*.rs`（非 formula） | `rust-optimization` | Rust 性能优化 |
-| `migrations/**/*.sql` | `sqlite-optimization` | 数据库优化 |
+| `src/**/*.rs`（非 wechat/ai） | `rust-optimization` | Rust 性能优化 |
 | 任何 API 设计 | `api-design` | API 设计规范 |
 
 #### 步骤 5：TDD - 先写测试（test-driven-development）
@@ -185,10 +185,10 @@ alwaysApply: true
 - [ ] React Hooks 遵循规则
 
 ### 安全检查
-- [ ] 无硬编码密钥、密码、tokens
+- [ ] 无硬编码密钥、密码、tokens（DeepSeek API 密钥使用系统密钥链存储）
 - [ ] SQL 查询使用参数化（`sqlx::query_as!`）
 - [ ] Tauri 命令参数已验证
-- [ ] 日志中无敏感信息
+- [ ] 日志中无敏感信息（聊天内容、API 密钥、用户数据）
 
 ### 测试覆盖
 - [ ] 所有测试通过（`cargo test` 和 `npm test`）
@@ -239,7 +239,7 @@ alwaysApply: true
 - `01-project-overview.md` - 项目概览和技术栈
 - `02-rust-backend-standards.md` - Rust 后端开发规范
 - `03-react-frontend-standards.md` - React TypeScript 前端规范
-- `04-database-standards.md` - 数据库与数据访问规范
+- `04-configuration-standards.md` - 配置管理与环境变量规范
 - `05-lsp-usage-standards.md` - LSP 使用规范
 - `06-security-standards.md` - 安全开发规范
 - `07-testing-standards.md` - 测试规范（80% 覆盖率）

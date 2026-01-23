@@ -1,0 +1,47 @@
+{
+  "name": "deepseek-integration",
+  "version": "1.0.0",
+  "description": "DeepSeek API 集成规范，包括 HTTP 客户端、API 调用、错误处理、流式响应、连接池优化等",
+  "triggers": {
+    "keywords": [
+      "DeepSeek",
+      "API",
+      "AI",
+      "LLM",
+      "请求",
+      "响应",
+      "reqwest",
+      "HTTP",
+      "流式响应",
+      "streaming",
+      "连接池",
+      "重试",
+      "错误处理",
+      "API集成"
+    ],
+    "filePatterns": [
+      "src/ai/**/*.rs",
+      "src/**/deepseek*.rs"
+    ],
+    "contexts": [
+      "DeepSeek 集成",
+      "API 调用",
+      "AI 服务",
+      "HTTP 客户端",
+      "错误处理"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["deepseek", "api", "ai", "llm", "http", "reqwest", "streaming"],
+  "relatedSkills": [
+    "error-handling-debugging",
+    "rust-optimization"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "06-security-standards.md",
+    "08-performance-standards.md"
+  ]
+}

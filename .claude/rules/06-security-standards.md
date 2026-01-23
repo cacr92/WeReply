@@ -1,9 +1,9 @@
-# 安全开发规范
+# 安全开发规范 - WeReply
 
 ## 桌面应用安全特点
 
 本项目是 Tauri 桌面应用，安全重点与 Web 应用不同：
-- ✅ 重点：本地数据保护、API 密钥管理、Tauri 命令安全
+- ✅ 重点：API 密钥管理、IPC 通信安全、隐私保护、Tauri 命令安全
 - ❌ 不适用：CSRF、CSP（这些是 Web 应用的安全措施）
 
 ---
@@ -12,28 +12,46 @@
 
 ### 代码提交前必查
 - [ ] 无硬编码密钥（API keys、密码、tokens）
+- [ ] DeepSeek API 密钥使用系统密钥链存储
 - [ ] 所有 Tauri 命令参数已验证
-- [ ] SQL 注入防护（使用 SQLx 参数化查询）
+- [ ] IPC 消息已验证（防止恶意 Agent 消息）
 - [ ] 用户输入已验证（前端 + 后端双重验证）
-- [ ] 敏感数据已加密存储
+- [ ] 日志中无敏感信息（聊天内容、API 密钥）
 - [ ] 错误消息不暴露敏感信息
 - [ ] 避免使用 `unsafe` 代码（除非绝对必要）
 
 ---
 
-## 1. 密钥管理（桌面应用）
+## 1. API 密钥管理（系统密钥链）
 
-### 环境变量管理
-**强制要求**：所有 API 密钥必须使用环境变量，禁止硬编码。
+### 禁止使用环境变量或文件存储
+**WeReply 特定要求**：DeepSeek API 密钥必须使用系统密钥链存储。
 
 **✓ 正确示例**：
 ```rust
-use std::env;
+use keyring::Entry;
 use anyhow::{Context, Result};
 
-pub fn get_api_key() -> Result<String> {
-    env::var("OPENAI_API_KEY")
-        .context("OPENAI_API_KEY 环境变量未设置")
+pub struct ApiKeyManager;
+
+impl ApiKeyManager {
+    pub fn get_deepseek_api_key() -> Result<String> {
+        let entry = Entry::new("wereply", "deepseek_api_key")?;
+        entry.get_password()
+            .context("未找到 DeepSeek API 密钥，请在设置中配置")
+    }
+
+    pub fn set_deepseek_api_key(api_key: &str) -> Result<()> {
+        let entry = Entry::new("wereply", "deepseek_api_key")?;
+        entry.set_password(api_key)?;
+        Ok(())
+    }
+
+    pub fn delete_deepseek_api_key() -> Result<()> {
+        let entry = Entry::new("wereply", "deepseek_api_key")?;
+        entry.delete_password()?;
+        Ok(())
+    }
 }
 ```
 
@@ -41,31 +59,202 @@ pub fn get_api_key() -> Result<String> {
 ```rust
 // ✗ 禁止硬编码
 const API_KEY: &str = "sk-1234567890abcdef";
-```
 
-### 敏感配置存储
-桌面应用的配置文件应加密存储：
-
-```rust
-use tauri::api::path::app_config_dir;
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
-pub struct AppConfig {
-    pub api_key: String,  // 应加密存储
-    pub database_path: String,
+// ✗ 禁止使用环境变量（不安全）
+use std::env;
+pub fn get_api_key() -> Result<String> {
+    env::var("DEEPSEEK_API_KEY")  // ✗ 不安全
 }
 
-// 使用 Tauri 的安全存储
-pub async fn save_config(config: &AppConfig) -> Result<()> {
-    // 实现加密存储逻辑
-    Ok(())
+// ✗ 禁止存储在配置文件
+pub struct AppConfig {
+    pub api_key: String,  // ✗ 明文存储
+}
+```
+
+### Tauri 命令接口
+```rust
+#[tauri::command]
+#[specta::specta]
+pub async fn save_api_key(api_key: String) -> ApiResponse<()> {
+    // 验证密钥格式
+    if !api_key.starts_with("sk-") {
+        return api_err("DeepSeek API 密钥格式错误".to_string());
+    }
+
+    match ApiKeyManager::set_deepseek_api_key(&api_key) {
+        Ok(()) => api_ok(()),
+        Err(e) => api_err(format!("保存 API 密钥失败: {}", e)),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_api_key_status() -> ApiResponse<bool> {
+    match ApiKeyManager::get_deepseek_api_key() {
+        Ok(_) => api_ok(true),
+        Err(_) => api_ok(false),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_api_key() -> ApiResponse<()> {
+    match ApiKeyManager::delete_deepseek_api_key() {
+        Ok(()) => api_ok(()),
+        Err(e) => api_err(format!("删除 API 密钥失败: {}", e)),
+    }
 }
 ```
 
 ---
 
-## 2. Tauri 命令安全
+## 2. IPC 通信安全
+
+### Agent 消息验证
+**强制要求**：所有从 Platform Agent 接收的消息必须验证。
+
+**✓ 正确示例**：
+```rust
+use serde::{Deserialize, Serialize};
+use validator::Validate;
+
+#[derive(Serialize, Deserialize, Validate)]
+#[serde(tag = "type")]
+pub enum AgentMessage {
+    #[serde(rename = "message.new")]
+    MessageNew {
+        #[validate(length(max = 10000))]  // 限制消息长度，防止内存攻击
+        content: String,
+
+        #[validate(length(max = 100))]
+        sender: String,
+
+        timestamp: u64,
+    },
+
+    #[serde(rename = "input.result")]
+    InputResult {
+        success: bool,
+
+        #[validate(length(max = 1000))]
+        error: Option<String>,
+    },
+}
+
+pub async fn handle_agent_message(raw_message: &str) -> Result<()> {
+    // 1. 验证消息长度
+    if raw_message.len() > 100000 {
+        return Err(anyhow!("Agent 消息过大"));
+    }
+
+    // 2. 解析 JSON
+    let message: AgentMessage = serde_json::from_str(raw_message)
+        .context("Agent 消息格式错误")?;
+
+    // 3. 验证消息内容
+    match &message {
+        AgentMessage::MessageNew { content, sender, .. } => {
+            if content.is_empty() {
+                return Err(anyhow!("消息内容为空"));
+            }
+            if sender.is_empty() {
+                return Err(anyhow!("发送者为空"));
+            }
+        }
+        AgentMessage::InputResult { .. } => {
+            // 验证结果消息
+        }
+    }
+
+    // 4. 处理消息
+    process_message(message).await
+}
+```
+
+**✗ 错误示例**：
+```rust
+// ✗ 直接解析，不验证
+pub async fn handle_agent_message(raw_message: &str) -> Result<()> {
+    let message: AgentMessage = serde_json::from_str(raw_message)?;
+    process_message(message).await  // ✗ 没有验证消息合法性
+}
+```
+
+### Agent 进程安全
+```rust
+use tokio::process::Command;
+
+pub async fn spawn_agent_safely() -> Result<Child> {
+    let agent_path = validate_agent_path()?;
+
+    // 使用受限权限启动 Agent
+    let child = Command::new(&agent_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("启动 Agent 失败")?;
+
+    Ok(child)
+}
+
+fn validate_agent_path() -> Result<PathBuf> {
+    let agent_path = get_agent_executable_path()?;
+
+    // 验证路径安全性
+    if !agent_path.exists() {
+        return Err(anyhow!("Agent 可执行文件不存在"));
+    }
+
+    // 检查文件权限（可选）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(&agent_path)?;
+        let permissions = metadata.permissions();
+
+        // 确保只有所有者可以写入
+        if permissions.mode() & 0o022 != 0 {
+            return Err(anyhow!("Agent 文件权限不安全"));
+        }
+    }
+
+    Ok(agent_path)
+}
+```
+
+### Agent 通信超时
+```rust
+use tokio::time::{timeout, Duration};
+
+pub async fn send_message_with_timeout(
+    agent: &mut AgentConnection,
+    message: &AgentMessage,
+) -> Result<()> {
+    timeout(
+        Duration::from_secs(5),
+        agent.send_message(message)
+    )
+    .await
+    .map_err(|_| anyhow!("发送消息超时"))?
+}
+
+pub async fn receive_message_with_timeout(
+    agent: &mut AgentConnection,
+) -> Result<AgentMessage> {
+    timeout(
+        Duration::from_secs(10),
+        agent.receive_message()
+    )
+    .await
+    .map_err(|_| anyhow!("接收消息超时"))?
+}
+```
+
+---
+
+## 3. Tauri 命令安全
 
 ### 参数验证
 所有 Tauri 命令必须验证参数：
@@ -75,25 +264,29 @@ pub async fn save_config(config: &AppConfig) -> Result<()> {
 use validator::Validate;
 
 #[derive(Deserialize, Validate, Type)]
-pub struct CreateFormulaDto {
-    #[validate(length(min = 2, max = 50))]
-    pub name: String,
+pub struct GenerateSuggestionsRequest {
+    #[validate(length(min = 1, max = 10))]
+    pub context_messages: Vec<String>,
 
-    #[validate(length(equal = 3))]
-    pub species_code: String,
+    #[validate(custom = "validate_suggestion_style")]
+    pub style: SuggestionStyle,
+}
 
-    #[validate(range(min = 0.0, max = 100.0))]
-    pub proportion: Option<f64>,
+fn validate_suggestion_style(style: &SuggestionStyle) -> Result<(), ValidationError> {
+    match style {
+        SuggestionStyle::Formal | SuggestionStyle::Friendly | SuggestionStyle::Humorous => Ok(()),
+        _ => Err(ValidationError::new("invalid_style")),
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn create_formula(
-    dto: CreateFormulaDto,
-    state: State<'_, TauriAppState>,
-) -> ApiResponse<Formula> {
+pub async fn generate_suggestions(
+    request: GenerateSuggestionsRequest,
+    state: State<'_, AppState>,
+) -> ApiResponse<Vec<Suggestion>> {
     // 验证输入
-    if let Err(e) = dto.validate() {
+    if let Err(e) = request.validate() {
         return api_err(format!("输入验证失败: {}", e));
     }
 
@@ -107,100 +300,145 @@ pub async fn create_formula(
 ```rust
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_all_data(
-    state: State<'_, TauriAppState>,
+pub async fn clear_all_suggestions(
+    state: State<'_, AppState>,
 ) -> ApiResponse<()> {
-    // 桌面应用可以添加二次确认机制
-    // 或者要求管理员密码
+    // 可以添加二次确认机制
+    // 或者要求用户确认密码
 
-    // 执行删除...
+    // 执行清除...
 }
 ```
 
 ---
 
-## 3. SQL 注入防护
+## 4. 隐私保护
 
-### 使用 SQLx 参数化查询
-**强制要求**：必须使用 `sqlx::query_as!` 宏，禁止字符串拼接 SQL。
+### 日志中不记录敏感信息
+**强制要求**：禁止在日志中记录微信聊天内容、API 密钥等敏感信息。
 
 **✓ 正确示例**：
 ```rust
-pub async fn get_formula_by_name(
-    &self,
-    name: &str,
-) -> Result<Option<Formula>> {
-    let formula = sqlx::query_as!(
-        Formula,
-        "SELECT id, name, species_code, created_at, updated_at
-         FROM formulas
-         WHERE name = ?",
-        name  // 参数化查询，自动防止 SQL 注入
-    )
-    .fetch_optional(&self.pool)
-    .await?;
+use tracing::info;
 
-    Ok(formula)
-}
+info!(
+    message_count = context.len(),
+    suggestion_style = ?style,
+    "生成建议请求"
+);
+// ✓ 不记录聊天内容、API 密钥
 ```
 
 **✗ 错误示例**：
 ```rust
-// ✗ 禁止字符串拼接 SQL
-pub async fn get_formula_by_name(&self, name: &str) -> Result<Option<Formula>> {
-    let sql = format!("SELECT * FROM formulas WHERE name = '{}'", name);
-    // 这会导致 SQL 注入漏洞！
+// ✗ 禁止记录敏感信息
+info!("聊天内容: {}", message_content);  // ✗ 泄露隐私
+info!("DeepSeek API Key: {}", api_key);  // ✗ 泄露密钥
+info!("用户微信号: {}", wechat_id);  // ✗ 泄露用户信息
+```
+
+### DeepSeek API 调用日志
+```rust
+pub async fn call_deepseek_api(
+    prompt: String,
+    api_key: &str,
+) -> Result<String> {
+    info!(
+        prompt_length = prompt.len(),
+        "调用 DeepSeek API"
+    );
+    // ✓ 只记录长度，不记录内容
+
+    let response = reqwest::Client::new()
+        .post("https://api.deepseek.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&request_body)
+        .send()
+        .await?;
+
+    info!(
+        status = response.status().as_u16(),
+        "DeepSeek API 响应"
+    );
+    // ✓ 只记录状态码
+
+    Ok(response.text().await?)
 }
 ```
 
-### 动态查询构建
-如需动态构建查询，使用 QueryBuilder：
-
+### 错误消息不暴露内部信息
+**✓ 正确示例**：
 ```rust
-use sqlx::QueryBuilder;
+pub async fn generate_suggestions(
+    request: GenerateSuggestionsRequest,
+) -> ApiResponse<Vec<Suggestion>> {
+    match deepseek_service.generate_suggestions(request).await {
+        Ok(suggestions) => api_ok(suggestions),
+        Err(e) => {
+            error!(error = %e, "建议生成失败");
+            // 返回通用错误消息，不暴露内部细节
+            api_err("建议生成失败，请检查 API 密钥配置".to_string())
+        }
+    }
+}
+```
 
-pub async fn search_formulas(
-    &self,
-    filters: FormulaFilters,
-) -> Result<Vec<Formula>> {
-    let mut query = QueryBuilder::new(
-        "SELECT id, name, species_code FROM formulas WHERE 1=1"
-    );
+### Agent 通信日志
+```rust
+pub async fn monitor_agent_messages(
+    agent: &mut AgentConnection,
+) -> Result<()> {
+    loop {
+        match agent.receive_message().await {
+            Ok(message) => {
+                info!(
+                    message_type = message.message_type(),
+                    "收到 Agent 消息"
+                );
+                // ✓ 只记录消息类型，不记录内容
 
-    if let Some(name) = filters.name {
-        query.push(" AND name LIKE ");
-        query.push_bind(format!("%{}%", name));  // 安全的参数绑定
+                handle_message(message).await?;
+            }
+            Err(e) => {
+                error!(error = %e, "Agent 消息接收失败");
+                break;
+            }
+        }
     }
 
-    if let Some(species) = filters.species_code {
-        query.push(" AND species_code = ");
-        query.push_bind(species);
-    }
-
-    query.build_query_as::<Formula>()
-        .fetch_all(&self.pool)
-        .await
+    Ok(())
 }
 ```
 
 ---
 
-## 4. 输入验证
+## 5. 输入验证
 
 ### 前端验证（第一道防线）
 使用 Ant Design Form 验证：
 
 ```typescript
 <Form.Item
-  name="name"
-  label="配方名称"
+  name="apiKey"
+  label="DeepSeek API 密钥"
   rules={[
-    { required: true, message: '请输入配方名称' },
-    { min: 2, max: 50, message: '名称长度为 2-50 个字符' },
-    { pattern: /^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/, message: '只能包含中文、字母、数字、下划线和连字符' }
+    { required: true, message: '请输入 API 密钥' },
+    { pattern: /^sk-/, message: 'API 密钥格式错误（应以 sk- 开头）' },
+    { min: 20, message: 'API 密钥长度不足' }
   ]}
 >
-  <Input />
+  <Input.Password />
+</Form.Item>
+
+<Form.Item
+  name="maxSuggestions"
+  label="建议数量"
+  rules={[
+    { required: true, message: '请选择建议数量' },
+    { type: 'number', min: 1, max: 5, message: '建议数量必须在 1-5 之间' }
+  ]}
+>
+  <InputNumber />
 </Form.Item>
 ```
 
@@ -211,79 +449,107 @@ pub async fn search_formulas(
 use validator::{Validate, ValidationError};
 
 #[derive(Deserialize, Validate, Type)]
-pub struct CreateFormulaDto {
-    #[validate(length(min = 2, max = 50))]
-    #[validate(regex = "FORMULA_NAME_REGEX")]
-    pub name: String,
+pub struct UserConfig {
+    #[validate(length(min = 1, max = 100))]
+    pub deepseek_endpoint: String,
+
+    #[validate(range(min = 1, max = 5))]
+    pub max_suggestions: u8,
+
+    #[validate(range(min = 100, max = 5000))]
+    pub monitor_interval_ms: u64,
+
+    #[validate(range(min = 0.5, max = 1.0))]
+    pub window_opacity: f32,
 }
 
-lazy_static! {
-    static ref FORMULA_NAME_REGEX: Regex =
-        Regex::new(r"^[\u4e00-\u9fa5a-zA-Z0-9_-]+$").unwrap();
-}
-```
-
----
-
-## 5. 敏感数据保护
-
-### 日志中不记录敏感信息
-**✓ 正确��例**：
-```rust
-use tracing::info;
-
-info!(
-    formula_id = formula.id,
-    formula_name = formula.name,
-    "配方创建成功"
-);
-// ✓ 不记录 API 密钥、密码等敏感信息
-```
-
-**✗ 错误示例**：
-```rust
-// ✗ 禁止记录敏感信息
-info!("API Key: {}", api_key);
-info!("User password: {}", password);
-```
-
-### 错误消息不暴露内部信息
-**✓ 正确示例**：
-```rust
-pub async fn get_formula(id: i64) -> ApiResponse<Formula> {
-    match repository.find_by_id(id).await {
-        Ok(formula) => api_ok(formula),
-        Err(e) => {
-            error!(error = %e, "查询配方失败");
-            // 返回通用错误消息，不暴露内部细节
-            api_err("查询配方失败，请稍后重试".to_string())
-        }
+#[tauri::command]
+#[specta::specta]
+pub async fn update_config(
+    config: UserConfig,
+    state: State<'_, AppState>,
+) -> ApiResponse<()> {
+    // 验证配置
+    if let Err(e) = config.validate() {
+        return api_err(format!("配置验证失败: {}", e));
     }
-}
-```
 
-### 数据库敏感字段加密
-对于特别敏感的数据（如 API 密钥），应加密存储：
+    // 额外验证
+    if !config.deepseek_endpoint.starts_with("http") {
+        return api_err("API 端点必须以 http:// 或 https:// 开头".to_string());
+    }
 
-```rust
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, NewAead};
-
-pub fn encrypt_api_key(key: &str) -> Result<Vec<u8>> {
-    // 使用 AES-256-GCM 加密
-    // 实现加密逻辑
-    Ok(vec![])
-}
-
-pub fn decrypt_api_key(encrypted: &[u8]) -> Result<String> {
-    // 解密逻辑
-    Ok(String::new())
+    // 保存配置...
+    api_ok(())
 }
 ```
 
 ---
 
-## 6. 依赖安全
+## 6. DeepSeek API 调用安全
+
+### HTTPS 强制使用
+```rust
+pub fn validate_api_endpoint(endpoint: &str) -> Result<()> {
+    if !endpoint.starts_with("https://") {
+        return Err(anyhow!("API 端点必须使用 HTTPS"));
+    }
+    Ok(())
+}
+```
+
+### 请求超时
+```rust
+use tokio::time::{timeout, Duration};
+
+pub async fn call_deepseek_with_timeout(
+    prompt: String,
+    api_key: &str,
+    timeout_secs: u64,
+) -> Result<String> {
+    timeout(
+        Duration::from_secs(timeout_secs),
+        call_deepseek_api(prompt, api_key)
+    )
+    .await
+    .map_err(|_| anyhow!("DeepSeek API 调用超时"))?
+}
+```
+
+### 错误处理
+```rust
+pub async fn call_deepseek_api(
+    prompt: String,
+    api_key: &str,
+) -> Result<String> {
+    let response = reqwest::Client::new()
+        .post("https://api.deepseek.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&request_body)
+        .send()
+        .await
+        .context("DeepSeek API 请求失败")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+
+        error!(
+            status = status.as_u16(),
+            "DeepSeek API 错误"
+        );
+        // ✓ 不记录错误详情（可能包含敏感信息）
+
+        return Err(anyhow!("DeepSeek API 调用失败"));
+    }
+
+    Ok(response.text().await?)
+}
+```
+
+---
+
+## 7. 依赖安全
 
 ### 定期更新依赖
 ```bash
@@ -306,13 +572,13 @@ cargo update
 
 ---
 
-## 7. Rust 特定安全
+## 8. Rust 特定安全
 
 ### 避免 unsafe 代码
 **原则**：除非绝对必要，否则避免使用 `unsafe`。
 
 **✓ 可接受的 unsafe 使用场景**：
-- FFI 调用
+- FFI 调用（与 Python/Swift Agent 交互）
 - 性能关键路径（经过充分测试）
 - 与 C 库交互
 
@@ -324,32 +590,32 @@ cargo update
 ### 使用 Rust 安全特性
 ```rust
 // ✓ 使用 Option 而非空指针
-pub fn find_material(code: &str) -> Option<Material> {
+pub fn find_suggestion(id: &str) -> Option<Suggestion> {
     // ...
 }
 
 // ✓ 使用 Result 进行错误处理
-pub fn calculate_nutrition(material: &Material) -> Result<Nutrition> {
+pub fn parse_agent_message(json: &str) -> Result<AgentMessage> {
     // ...
 }
 
 // ✓ 使用借用检查器防止数据竞争
-pub fn process_formulas(formulas: &[Formula]) -> Vec<Result> {
+pub fn process_messages(messages: &[WeChatMessage]) -> Vec<Suggestion> {
     // 编译器保证内存安全
 }
 ```
 
 ---
 
-## 8. 前端安全（React）
+## 9. 前端安全（React）
 
-### 避免 XSS（虽然桌面应用风险较低）
+### 避免 XSS
 **✓ 正确示例**：
 ```typescript
 // ✓ React 默认转义内容
-<div>{userInput}</div>
+<div>{suggestionContent}</div>
 
-// ✓ 如需渲染 HTML，使用 DOMPurify
+// ✓ 如需渲染富文本，使用 DOMPurify
 import DOMPurify from 'dompurify';
 const clean = DOMPurify.sanitize(userInput);
 <div dangerouslySetInnerHTML={{ __html: clean }} />
@@ -363,25 +629,25 @@ const clean = DOMPurify.sanitize(userInput);
 
 ### 验证 Tauri 命令响应
 ```typescript
-const result = await commands.getFormula(id);
+const result = await commands.generateSuggestions(request);
 if (!result.success) {
   message.error(result.message);
   return;
 }
 
 // 验证数据结构
-if (!result.data || typeof result.data.id !== 'number') {
-  message.error('数据格式错误');
+if (!result.data || !Array.isArray(result.data)) {
+  message.error('建议数据格式错误');
   return;
 }
 
 // 使用数据
-setFormula(result.data);
+setSuggestions(result.data);
 ```
 
 ---
 
-## 9. 文件操作安全
+## 10. 文件操作安全
 
 ### 路径验证
 处理用户提供的文件路径时，验证路径安全：
@@ -406,29 +672,29 @@ pub fn validate_file_path(path: &str) -> Result<PathBuf> {
 }
 ```
 
-### 文件类型验证
+### 配置文件验证
 ```rust
-pub fn validate_import_file(path: &Path) -> Result<()> {
+pub fn validate_config_file(path: &Path) -> Result<()> {
     let extension = path.extension()
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow!("无效的文件扩展名"))?;
 
     match extension.to_lowercase().as_str() {
-        "xlsx" | "xls" | "csv" => Ok(()),
-        _ => Err(anyhow!("不支持的文件类型: {}", extension)),
+        "json" => Ok(()),
+        _ => Err(anyhow!("不支持的配置文件类型: {}", extension)),
     }
 }
 ```
 
 ---
 
-## 10. 安全响应协议
+## 11. 安全响应协议
 
 ### 发现漏洞时的处理流程
 1. **立即停止工作**
 2. **评估漏洞严重性**
-   - 高危：可能导致数据泄露、系统破坏
-   - 中危：可能导致功能异常
+   - 高危：可能导致 API 密钥泄露、聊天内容泄露
+   - 中危：可能导致功能异常、Agent 崩溃
    - 低危：理论风险，实际影响小
 3. **修复漏洞**
 4. **轮换暴露的密钥**（如适用）
@@ -441,11 +707,12 @@ pub fn validate_import_file(path: &Path) -> Result<()> {
 
 以下情况必须进行安全审查：
 - [ ] 添加新的 Tauri 命令
-- [ ] 修改数据库访问层
-- [ ] 处理用户文件上传/导入
+- [ ] 修改 IPC 通信层
+- [ ] 修改 DeepSeek API 调用逻辑
+- [ ] 添加新的 Agent 消息类型
 - [ ] 集成第三方 API
 - [ ] 添加新的配置项
-- [ ] 修改认证/授权逻辑（如有）
+- [ ] 修改日志记录逻辑
 
 ---
 
@@ -453,11 +720,11 @@ pub fn validate_import_file(path: &Path) -> Result<()> {
 
 - [ ] 运行 `cargo clippy` 无安全警告
 - [ ] 运行 `cargo audit` 无已知漏洞
-- [ ] 无硬编码密钥
-- [ ] 所有 SQL 查询使用参数化
+- [ ] 无硬编码 API 密钥
+- [ ] DeepSeek API 密钥使用系统密钥链
+- [ ] 所有 IPC 消息已验证
 - [ ] 所有 Tauri 命令参数已验证
-- [ ] 敏感数据已加密存储
-- [ ] 日志中无敏感信息
+- [ ] 日志中无敏感信息（聊天内容、API 密钥）
 - [ ] 错误消息不暴露内部细节
 - [ ] 无不必要的 `unsafe` 代码
 - [ ] 前端无 `dangerouslySetInnerHTML`（或已清理）
@@ -471,16 +738,41 @@ pub fn validate_import_file(path: &Path) -> Result<()> {
 **✓ 正确**：前后端都验证，后端验证是最后防线
 
 ### 2. 日志记录敏感信息
-**✗ 错误**：`info!("API Key: {}", key)`
-**✓ 正确**：`info!("API 调用成功")`
+**✗ 错误**：`info!("聊天内容: {}", message)`
+**✓ 正确**：`info!("收到新消息")`
 
-### 3. SQL 字符串拼接
-**✗ 错误**：`format!("SELECT * FROM users WHERE id = {}", id)`
-**✓ 正确**：`sqlx::query_as!(..., "WHERE id = ?", id)`
+### 3. 硬编码 API 密钥
+**✗ 错误**：`const API_KEY: &str = "sk-xxx"`
+**✓ 正确**：`ApiKeyManager::get_deepseek_api_key()`
 
-### 4. 过于详细的错误消息
-**✗ 错误**：`api_err(format!("数据库连接失败: {}", db_error))`
-**✓ 正确**：`api_err("操作失败，请稍后重试".to_string())`
+### 4. 不验证 Agent 消息
+**✗ 错误**：`let msg: AgentMessage = serde_json::from_str(raw)?;`
+**✓ 正确**：`validate_agent_message(raw)?; let msg = parse(raw)?;`
+
+### 5. 过于详细的错误消息
+**✗ 错误**：`api_err(format!("DeepSeek API 错误: {}", detailed_error))`
+**✓ 正确**：`api_err("建议生成失败，请检查 API 配置".to_string())`
+
+---
+
+## WeReply 特定安全要点
+
+### 1. 微信聊天内容隐私
+- ❌ 不记录聊天内容到日志
+- ❌ 不上传聊天内容到任何服务器（除 DeepSeek API）
+- ✅ 仅在内存中处理消息
+- ✅ 及时清理历史消息
+
+### 2. Agent 进程隔离
+- ✅ Agent 异常不影响主程序
+- ✅ Agent 崩溃自动重启
+- ✅ Agent 消息超时处理
+
+### 3. DeepSeek API 调用
+- ✅ 使用 HTTPS
+- ✅ 设置超时（防止长时间阻塞）
+- ✅ 错误处理（不暴露 API 密钥）
+- ✅ 请求频率限制（防止滥用）
 
 ---
 
@@ -489,4 +781,5 @@ pub fn validate_import_file(path: &Path) -> Result<()> {
 - [Rust Security Guidelines](https://anssi-fr.github.io/rust-guide/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [Tauri Security Best Practices](https://tauri.app/v1/references/architecture/security/)
-- [SQLx Documentation](https://docs.rs/sqlx/)
+- [keyring-rs Documentation](https://docs.rs/keyring/)
+- [reqwest Security](https://docs.rs/reqwest/latest/reqwest/)

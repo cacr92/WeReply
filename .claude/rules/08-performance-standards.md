@@ -1,106 +1,107 @@
-# 性能优化规范
+# 性能优化规范 - WeReply
 
 ## 桌面应用性能特点
 
 本项目是 Tauri 桌面应用，性能优化重点：
-- ✅ 重点：Rust 后端计算性能、React 渲染性能、数据库查询优化
-- ✅ 优势：无网络延迟、本地计算、直接文件访问
-- ⚠️ 注意：内存使用、启动时间、响应速度
+- ✅ 重点：低延迟响应、内存使用、IPC 通信效率、DeepSeek API 响应时间
+- ✅ 优势：无网络延迟、本地计算、直接系统访问
+- ⚠️ 注意：消息监听延迟、Agent 通信开销、窗口跟随性能
 
 ---
 
 ## 一、Rust 后端性能优化
 
-### 1. 并行计算
+### 1. 并发处理
 
-使用 Rayon 进行数据并行处理：
+使用 Tokio 异步运行时优化并发：
 
 **✓ 正确示例**：
 ```rust
-use rayon::prelude::*;
+use tokio::task;
 
-pub fn calculate_nutrition_batch(
-    materials: &[Material],
-) -> Vec<NutritionResult> {
-    materials
-        .par_iter()  // 并行迭代器
-        .map(|material| calculate_nutrition(material))
-        .collect()
-}
+pub async fn process_multiple_messages(
+    messages: Vec<String>,
+) -> Vec<Result<Suggestion>> {
+    // 并发处理多个消息
+    let mut tasks = Vec::new();
 
-pub fn optimize_formulas_batch(
-    formulas: &[FormulaDto],
-) -> Vec<Result<OptimizationResult>> {
-    formulas
-        .par_iter()
-        .map(|formula| optimize_formula(formula))
-        .collect()
+    for message in messages {
+        let task = task::spawn(async move {
+            generate_suggestion_for_message(message).await
+        });
+        tasks.push(task);
+    }
+
+    // 等待所有任务完成
+    let mut results = Vec::new();
+    for task in tasks {
+        results.push(task.await.unwrap());
+    }
+
+    results
 }
 ```
 
-**适用场景**：
-- 批量计算营养成分
-- 批量优化配方
-- 大量数据处理
-
 ### 2. 缓存策略
 
-使�� Moka 缓存频繁访问的数据：
+使用 Moka 缓存频繁访问的数据：
 
+**✓ 正确示例**：
 ```rust
 use moka::future::Cache;
 use std::time::Duration;
 
-pub struct MaterialService {
-    cache: Cache<String, Material>,
-    repository: Arc<MaterialRepository>,
+pub struct SuggestionCache {
+    cache: Cache<String, Vec<Suggestion>>,
 }
 
-impl MaterialService {
-    pub fn new(repository: Arc<MaterialRepository>) -> Self {
+impl SuggestionCache {
+    pub fn new() -> Self {
         Self {
             cache: Cache::builder()
-                .max_capacity(1000)  // 最多缓存 1000 个原料
-                .time_to_live(Duration::from_secs(3600))  // 1 小时过期
+                .max_capacity(100)  // 最多缓存 100 条建议
+                .time_to_live(Duration::from_secs(300))  // 5 分钟过期
                 .build(),
-            repository,
         }
     }
 
-    pub async fn get_material(&self, code: &str) -> Result<Material> {
+    pub async fn get_or_generate(
+        &self,
+        context_key: String,
+        generator: impl Future<Output = Result<Vec<Suggestion>>>,
+    ) -> Result<Vec<Suggestion>> {
         self.cache
-            .try_get_with(code.to_string(), async {
-                self.repository.find_by_code(code).await
-            })
+            .try_get_with(context_key, generator)
             .await
-            .map_err(|e| anyhow!("获取原料失败: {}", e))
+            .map_err(|e| anyhow!("缓存获取失败: {}", e))
     }
 
-    pub fn invalidate_cache(&self, code: &str) {
-        self.cache.invalidate(code);
+    pub fn invalidate(&self, key: &str) {
+        self.cache.invalidate(key);
     }
 }
 ```
 
 **缓存策略**：
-- **原料数据**：缓存 1 小时（变化不频繁）
-- **品种数据**：缓存 1 小时
-- **配方数据**：不缓存（经常变化）
-- **营养标准**：缓存 24 小时（很少变化）
+- **上下文建议**：缓存 5 分钟（相同上下文可能重复使用）
+- **用户配置**：缓存 1 小时（变化不频繁）
+- **API 密钥状态**：不缓存（安全敏感）
 
 ### 3. 避免不必要的克隆
 
 **✓ 正确示例**：
 ```rust
 // 使用引用
-pub fn calculate_total_cost(materials: &[Material]) -> f64 {
-    materials.iter().map(|m| m.price).sum()
+pub fn calculate_context_hash(messages: &[String]) -> String {
+    messages.iter().fold(String::new(), |acc, msg| {
+        format!("{}{}", acc, msg)
+    })
 }
 
 // 移动所有权（如果不再需要原数据）
-pub fn process_formulas(formulas: Vec<Formula>) -> Vec<ProcessedFormula> {
-    formulas.into_iter()
-        .map(|f| process_formula(f))
+pub fn process_suggestions(suggestions: Vec<Suggestion>) -> Vec<ProcessedSuggestion> {
+    suggestions.into_iter()
+        .map(|s| process_suggestion(s))
         .collect()
 }
 ```
@@ -108,82 +109,159 @@ pub fn process_formulas(formulas: Vec<Formula>) -> Vec<ProcessedFormula> {
 **✗ 错误示例**：
 ```rust
 // 不必要的克隆
-pub fn calculate_total_cost(materials: Vec<Material>) -> f64 {
-    let cloned = materials.clone();  // ✗ 不必要
-    cloned.iter().map(|m| m.price).sum()
+pub fn calculate_context_hash(messages: Vec<String>) -> String {
+    let cloned = messages.clone();  // ✗ 不必要
+    cloned.iter().fold(String::new(), |acc, msg| {
+        format!("{}{}", acc, msg)
+    })
 }
 ```
 
-### 4. 使用 Cow 优化字符串处理
+### 4. IPC 通信优化
 
+**批量处理消息**：
 ```rust
-use std::borrow::Cow;
+pub async fn batch_process_agent_messages(
+    agent: &mut AgentConnection,
+    max_batch_size: usize,
+) -> Result<Vec<AgentMessage>> {
+    let mut messages = Vec::new();
 
-pub fn normalize_material_code(code: &str) -> Cow<str> {
-    if code.chars().all(|c| c.is_uppercase()) {
-        // 已经是大写，不需要分配新字符串
-        Cow::Borrowed(code)
-    } else {
-        // 需要转换，分配新字符串
-        Cow::Owned(code.to_uppercase())
+    // 批量读取消息
+    while messages.len() < max_batch_size {
+        match tokio::time::timeout(
+            Duration::from_millis(10),
+            agent.receive_message()
+        ).await {
+            Ok(Ok(msg)) => messages.push(msg),
+            _ => break,
+        }
+    }
+
+    Ok(messages)
+}
+```
+
+**消息压缩**（可选）：
+```rust
+use flate2::write::GzEncoder;
+use flate2::read::GzDecoder;
+
+pub fn compress_message(data: &[u8]) -> Result<Vec<u8>> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(data)?;
+    Ok(encoder.finish()?)
+}
+
+pub fn decompress_message(data: &[u8]) -> Result<Vec<u8>> {
+    let mut decoder = GzDecoder::new(data);
+    let mut decompressed = Vec::new();
+    decoder.read_to_end(&mut decompressed)?;
+    Ok(decompressed)
+}
+```
+
+### 5. DeepSeek API 调用优化
+
+**连接池复用**：
+```rust
+use reqwest::Client;
+use std::sync::Arc;
+
+pub struct DeepSeekService {
+    client: Arc<Client>,  // 复用 HTTP 客户端
+    api_key: String,
+}
+
+impl DeepSeekService {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            client: Arc::new(
+                Client::builder()
+                    .pool_max_idle_per_host(10)  // 连接池配置
+                    .timeout(Duration::from_secs(30))
+                    .build()
+                    .unwrap()
+            ),
+            api_key,
+        }
+    }
+
+    pub async fn generate_suggestions(
+        &self,
+        context: Vec<String>,
+        style: SuggestionStyle,
+    ) -> Result<Vec<Suggestion>> {
+        let request_body = json!({
+            "model": "deepseek-chat",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": format!("生成{}风格的回复建议", style.to_string())
+                },
+                {
+                    "role": "user",
+                    "content": context.join("\n")
+                }
+            ],
+            "n": 3,
+            "temperature": 0.7,
+        });
+
+        let response = self.client
+            .post("https://api.deepseek.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request_body)
+            .send()
+            .await?;
+
+        // 解析响应
+        let result: serde_json::Value = response.json().await?;
+        let suggestions = result["choices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|choice| {
+                Suggestion {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    content: choice["message"]["content"].as_str().unwrap().to_string(),
+                    style: style.clone(),
+                    confidence: 0.9,
+                }
+            })
+            .collect();
+
+        Ok(suggestions)
     }
 }
 ```
 
-### 5. 批量数据库操作
-
-使用 QueryBuilder 进行批量插入：
-
+**并发限制**（防止过载）：
 ```rust
-use sqlx::QueryBuilder;
+use tokio::sync::Semaphore;
+use std::sync::Arc;
 
-pub async fn batch_insert_materials(
-    &self,
-    materials: Vec<MaterialDto>,
-) -> Result<usize> {
-    let mut query_builder = QueryBuilder::new(
-        "INSERT INTO materials (code, name, price, protein, energy) "
-    );
-
-    query_builder.push_values(materials, |mut b, material| {
-        b.push_bind(material.code)
-         .push_bind(material.name)
-         .push_bind(material.price)
-         .push_bind(material.protein)
-         .push_bind(material.energy);
-    });
-
-    let result = query_builder.build().execute(&self.pool).await?;
-    Ok(result.rows_affected() as usize)
-}
-```
-
-### 6. 优化 HiGHS 求解器使用
-
-```rust
-pub async fn optimize_formula_with_timeout(
-    &self,
-    dto: OptimizeFormulaDto,
-    timeout_secs: u64,
-) -> Result<OptimizationResult> {
-    // 使用 tokio::time::timeout 防止长时间阻塞
-    tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        self.optimize_formula(dto)
-    )
-    .await
-    .map_err(|_| anyhow!("优化超时"))?
+pub struct RateLimitedDeepSeekService {
+    service: DeepSeekService,
+    semaphore: Arc<Semaphore>,
 }
 
-pub fn optimize_formula_parallel(
-    &self,
-    formulas: Vec<OptimizeFormulaDto>,
-) -> Vec<Result<OptimizationResult>> {
-    // 使用 Rayon 并行优化多个配方
-    formulas
-        .par_iter()
-        .map(|dto| self.optimize_formula_sync(dto))
-        .collect()
+impl RateLimitedDeepSeekService {
+    pub fn new(service: DeepSeekService, max_concurrent: usize) -> Self {
+        Self {
+            service,
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+        }
+    }
+
+    pub async fn generate_suggestions(
+        &self,
+        context: Vec<String>,
+        style: SuggestionStyle,
+    ) -> Result<Vec<Suggestion>> {
+        let _permit = self.semaphore.acquire().await?;
+        self.service.generate_suggestions(context, style).await
+    }
 }
 ```
 
@@ -196,23 +274,22 @@ pub fn optimize_formula_parallel(
 ```typescript
 import { memo } from 'react';
 
-interface MaterialRowProps {
-  material: Material;
-  onSelect: (code: string) => void;
+interface SuggestionItemProps {
+  suggestion: Suggestion;
+  onSelect: (id: string) => void;
 }
 
 // ✓ 使用 memo 包装纯组件
-export const MaterialRow = memo<MaterialRowProps>(({ material, onSelect }) => {
+export const SuggestionItem = memo<SuggestionItemProps>(({ suggestion, onSelect }) => {
   return (
-    <tr onClick={() => onSelect(material.code)}>
-      <td>{material.code}</td>
-      <td>{material.name}</td>
-      <td>{material.price}</td>
-    </tr>
+    <div className="suggestion-item" onClick={() => onSelect(suggestion.id)}>
+      <p>{suggestion.content}</p>
+      <span className="confidence">{(suggestion.confidence * 100).toFixed(0)}%</span>
+    </div>
   );
 });
 
-MaterialRow.displayName = 'MaterialRow';
+SuggestionItem.displayName = 'SuggestionItem';
 ```
 
 ### 2. 使用 useCallback 和 useMemo
@@ -220,36 +297,39 @@ MaterialRow.displayName = 'MaterialRow';
 ```typescript
 import { useCallback, useMemo } from 'react';
 
-export const FormulaList: React.FC = () => {
-  const { formulas, loading } = useFormulas();
+export const AssistantPanel: React.FC = () => {
+  const { suggestions, loading } = useSuggestions();
 
   // ✓ 使用 useMemo 缓存计算结果
-  const totalCost = useMemo(() => {
-    return formulas.reduce((sum, f) => sum + f.cost, 0);
-  }, [formulas]);
+  const sortedSuggestions = useMemo(() => {
+    return [...suggestions].sort((a, b) => b.confidence - a.confidence);
+  }, [suggestions]);
 
-  const sortedFormulas = useMemo(() => {
-    return [...formulas].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [formulas]);
+  const averageConfidence = useMemo(() => {
+    if (suggestions.length === 0) return 0;
+    return suggestions.reduce((sum, s) => sum + s.confidence, 0) / suggestions.length;
+  }, [suggestions]);
 
   // ✓ 使用 useCallback 缓存回调函数
-  const handleDelete = useCallback((id: number) => {
-    // 删除逻辑
-  }, []);
+  const handleSelect = useCallback((id: string) => {
+    const suggestion = suggestions.find(s => s.id === id);
+    if (suggestion) {
+      commands.writeToWeChatInput(suggestion.content);
+    }
+  }, [suggestions]);
 
-  const handleEdit = useCallback((id: number) => {
+  const handleEdit = useCallback((id: string, newContent: string) => {
     // 编辑逻辑
   }, []);
 
   return (
-    <div>
-      <p>总成本: {totalCost}</p>
-      {sortedFormulas.map(f => (
-        <FormulaCard
-          key={f.id}
-          formula={f}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
+    <div className="assistant-panel">
+      <p>平均置信度: {(averageConfidence * 100).toFixed(0)}%</p>
+      {sortedSuggestions.map(s => (
+        <SuggestionItem
+          key={s.id}
+          suggestion={s}
+          onSelect={handleSelect}
         />
       ))}
     </div>
@@ -257,35 +337,33 @@ export const FormulaList: React.FC = () => {
 };
 ```
 
-### 3. 虚拟滚动大列表
+### 3. 虚拟滚动（大列表优化）
 
-对于超过 100 项的列表，使用虚拟滚动：
+对于历史消息列表，使用虚拟滚动：
 
 ```typescript
 import { FixedSizeList } from 'react-window';
 
-interface VirtualizedListProps {
-  materials: Material[];
-  onSelect: (material: Material) => void;
+interface VirtualizedMessageListProps {
+  messages: WeChatMessage[];
 }
 
-export const VirtualizedMaterialList: React.FC<VirtualizedListProps> = ({
-  materials,
-  onSelect,
+export const VirtualizedMessageList: React.FC<VirtualizedMessageListProps> = ({
+  messages,
 }) => {
   const Row = ({ index, style }: any) => {
-    const material = materials[index];
+    const message = messages[index];
     return (
-      <div style={style} onClick={() => onSelect(material)}>
-        {material.name} - {material.price}
+      <div style={style} className="message-row">
+        <span className="sender">{message.sender}</span>: {message.content}
       </div>
     );
   };
 
   return (
     <FixedSizeList
-      height={600}
-      itemCount={materials.length}
+      height={400}
+      itemCount={messages.length}
       itemSize={50}
       width="100%"
     >
@@ -295,45 +373,29 @@ export const VirtualizedMaterialList: React.FC<VirtualizedListProps> = ({
 };
 ```
 
-### 4. 懒加载和代码分割
+### 4. 防抖和节流
 
+**防抖搜索**：
 ```typescript
-import { lazy, Suspense } from 'react';
-import { Spin } from 'antd';
-
-// 懒加载大组件
-const FormulaOptimization = lazy(() => import('./FormulaOptimization'));
-const PremixDesign = lazy(() => import('./PremixDesign'));
-const ReportGeneration = lazy(() => import('./ReportGeneration'));
-
-export const App: React.FC = () => {
-  return (
-    <Suspense fallback={<Spin size="large" />}>
-      <Routes>
-        <Route path="/optimize" element={<FormulaOptimization />} />
-        <Route path="/premix" element={<PremixDesign />} />
-        <Route path="/report" element={<ReportGeneration />} />
-      </Routes>
-    </Suspense>
-  );
-};
-```
-
-### 5. 防抖和节流
-
-```typescript
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { debounce } from 'lodash-es';
 
-export const MaterialSearch: React.FC = () => {
+export const ConfigSearch: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState<Config[]>([]);
 
   // 防抖搜索
   const debouncedSearch = useMemo(
     () =>
       debounce(async (term: string) => {
-        const results = await commands.searchMaterials(term);
-        setResults(results.data);
+        if (term.length === 0) {
+          setResults([]);
+          return;
+        }
+        const result = await commands.searchConfigs(term);
+        if (result.success) {
+          setResults(result.data);
+        }
       }, 300),
     []
   );
@@ -344,178 +406,157 @@ export const MaterialSearch: React.FC = () => {
     debouncedSearch(value);
   };
 
-  return <Input value={searchTerm} onChange={handleSearch} />;
+  return <Input value={searchTerm} onChange={handleSearch} placeholder="搜索配置..." />;
 };
 ```
 
-### 6. 优化 Ant Design Table
+**节流窗口跟随**：
+```typescript
+import { useEffect } from 'react';
+import { throttle } from 'lodash-es';
+
+export const useWindowFollow = (enabled: boolean) => {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const updatePosition = throttle(async () => {
+      try {
+        const result = await commands.getWeChatWindowPosition();
+        if (result.success && result.data) {
+          const { x, y, width } = result.data;
+          const appWindow = getCurrentWindow();
+          await appWindow.setPosition({
+            x: x + width + 10,  // 微信窗口右侧
+            y: y,
+          });
+        }
+      } catch (error) {
+        console.error('窗口跟随失败:', error);
+      }
+    }, 500);  // 每 500ms 最多执行一次
+
+    const interval = setInterval(updatePosition, 500);
+
+    return () => {
+      clearInterval(interval);
+      updatePosition.cancel();
+    };
+  }, [enabled]);
+};
+```
+
+### 5. 懒加载和代码分割
 
 ```typescript
-export const MaterialTable: React.FC = () => {
-  const columns = useMemo<ColumnsType<Material>>(
-    () => [
-      {
-        title: '原料代码',
-        dataIndex: 'code',
-        key: 'code',
-        width: 120,
-        fixed: 'left',
-      },
-      {
-        title: '原料名称',
-        dataIndex: 'name',
-        key: 'name',
-        width: 200,
-      },
-      // ... 其他列
-    ],
-    []
-  );
+import { lazy, Suspense } from 'react';
+import { Spin } from 'antd';
+
+// 懒加载配置对话框
+const ConfigDialog = lazy(() => import('./ConfigDialog'));
+const HistoryPanel = lazy(() => import('./HistoryPanel'));
+
+export const App: React.FC = () => {
+  const [showConfig, setShowConfig] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <Table
-      columns={columns}
-      dataSource={materials}
-      rowKey="code"
-      pagination={{
-        pageSize: 50,
-        showSizeChanger: true,
-        showTotal: (total) => `共 ${total} 条`,
-      }}
-      scroll={{ y: 600 }}  // 固定表头
-      virtual  // 启用虚拟滚动（Ant Design 5.x）
-    />
+    <div>
+      {showConfig && (
+        <Suspense fallback={<Spin size="large" />}>
+          <ConfigDialog onClose={() => setShowConfig(false)} />
+        </Suspense>
+      )}
+
+      {showHistory && (
+        <Suspense fallback={<Spin size="large" />}>
+          <HistoryPanel onClose={() => setShowHistory(false)} />
+        </Suspense>
+      )}
+    </div>
   );
 };
 ```
 
 ---
 
-## 三、数据库性能优化
+## 三、微信监听性能优化
 
-### 1. 索引策略
+### 1. 消息去重
 
-```sql
--- 为外键添加索引
-CREATE INDEX IF NOT EXISTS idx_formula_materials_formula_id
-ON formula_materials(formula_id);
-
-CREATE INDEX IF NOT EXISTS idx_formula_materials_material_code
-ON formula_materials(material_code);
-
--- 为常用查询字段添加索引
-CREATE INDEX IF NOT EXISTS idx_formulas_species_code
-ON formulas(species_code);
-
-CREATE INDEX IF NOT EXISTS idx_formulas_created_at
-ON formulas(created_at DESC);
-
--- 为组合查询添加复合索引
-CREATE INDEX IF NOT EXISTS idx_formulas_species_status
-ON formulas(species_code, status);
-```
-
-### 2. 避免 N+1 查询
-
-**✗ 错误示例**：
 ```rust
-// N+1 查询问题
-pub async fn get_formulas_with_materials(&self) -> Result<Vec<FormulaWithDetails>> {
-    let formulas = self.get_all_formulas().await?;
-    let mut results = Vec::new();
+use std::collections::HashSet;
 
-    for formula in formulas {
-        // ✗ 每次循环都执行一次查询
-        let materials = self.get_materials(formula.id).await?;
-        results.push(FormulaWithDetails { formula, materials });
+pub struct MessageDeduplicator {
+    seen_hashes: HashSet<u64>,
+    max_size: usize,
+}
+
+impl MessageDeduplicator {
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            seen_hashes: HashSet::new(),
+            max_size,
+        }
     }
 
-    Ok(results)
+    pub fn is_duplicate(&mut self, message: &str) -> bool {
+        let hash = self.calculate_hash(message);
+
+        if self.seen_hashes.contains(&hash) {
+            return true;
+        }
+
+        self.seen_hashes.insert(hash);
+
+        // 限制大小，避免内存无限增长
+        if self.seen_hashes.len() > self.max_size {
+            self.seen_hashes.clear();
+        }
+
+        false
+    }
+
+    fn calculate_hash(&self, message: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        message.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 ```
 
-**✓ 正确示例**：
-```rust
-// 使用 JOIN 一次性获取所有数据
-pub async fn get_formulas_with_materials(&self) -> Result<Vec<FormulaWithDetails>> {
-    let rows = sqlx::query!(
-        "SELECT
-            f.id, f.name, f.species_code,
-            fm.material_code, fm.proportion
-         FROM formulas f
-         LEFT JOIN formula_materials fm ON f.id = fm.formula_id
-         ORDER BY f.id"
-    )
-    .fetch_all(&self.pool)
-    .await?;
-
-    // 组装数据
-    let mut results = Vec::new();
-    // ... 数据组装逻辑
-
-    Ok(results)
-}
-```
-
-### 3. 使用 SQLite 优化选项
+### 2. 上下文裁剪
 
 ```rust
-pub async fn create_optimized_pool(database_url: &str) -> Result<SqlitePool> {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .min_connections(1)
-        .connect(database_url)
-        .await?;
+pub fn trim_context(
+    messages: Vec<String>,
+    max_messages: usize,
+    max_total_length: usize,
+) -> Vec<String> {
+    // 1. 限制消息数量
+    let mut trimmed: Vec<String> = messages
+        .into_iter()
+        .rev()
+        .take(max_messages)
+        .rev()
+        .collect();
 
-    // 启用 WAL 模式（提高并发性能）
-    sqlx::query("PRAGMA journal_mode = WAL")
-        .execute(&pool)
-        .await?;
+    // 2. 限制总长度
+    let mut total_length = 0;
+    let mut result = Vec::new();
 
-    // 设置缓存大小（单位：页，每页 4KB）
-    sqlx::query("PRAGMA cache_size = -64000")  // 64MB
-        .execute(&pool)
-        .await?;
+    for message in trimmed.iter().rev() {
+        if total_length + message.len() > max_total_length {
+            break;
+        }
+        total_length += message.len();
+        result.push(message.clone());
+    }
 
-    // 启用外键约束
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await?;
-
-    // 设置同步模式（NORMAL 平衡性能和安全性）
-    sqlx::query("PRAGMA synchronous = NORMAL")
-        .execute(&pool)
-        .await?;
-
-    Ok(pool)
-}
-```
-
-### 4. 批量操作
-
-```rust
-// 批量插入
-pub async fn batch_insert_formula_materials(
-    &self,
-    formula_id: i64,
-    materials: Vec<FormulaMaterialDto>,
-) -> Result<()> {
-    let mut tx = self.pool.begin().await?;
-
-    let mut query_builder = QueryBuilder::new(
-        "INSERT INTO formula_materials (formula_id, material_code, proportion) "
-    );
-
-    query_builder.push_values(materials, |mut b, material| {
-        b.push_bind(formula_id)
-         .push_bind(material.code)
-         .push_bind(material.proportion);
-    });
-
-    query_builder.build().execute(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(())
+    result.reverse();
+    result
 }
 ```
 
@@ -529,49 +570,48 @@ pub async fn batch_insert_formula_materials(
 #[tauri::command]
 #[specta::specta]
 pub async fn initialize_app(
-    state: State<'_, TauriAppState>,
+    state: State<'_, AppState>,
 ) -> ApiResponse<AppInitData> {
     // 只加载启动必需的数据
-    let factories = state.factory_service.get_all().await?;
-    let current_factory = state.factory_service.get_current().await?;
+    let api_key_exists = match ApiKeyManager::get_deepseek_api_key() {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+
+    let config = state.config_manager.get();
 
     // 其他数据延迟加载
     api_ok(AppInitData {
-        factories,
-        current_factory,
+        api_key_exists,
+        config,
     })
 }
 
-// 在用户需要时才加载
+// 在用户需要时才加载历史消息
 #[tauri::command]
 #[specta::specta]
-pub async fn load_materials(
-    state: State<'_, TauriAppState>,
-) -> ApiResponse<Vec<Material>> {
-    // 延迟加载原料数据
-    state.material_service.get_all().await
+pub async fn load_message_history(
+    state: State<'_, AppState>,
+) -> ApiResponse<Vec<WeChatMessage>> {
+    // 延迟加载历史消息
+    state.context_manager.get_history().await
 }
 ```
 
-### 2. 预加载常用数据
+### 2. 预热连接
 
-```typescript
-export const App: React.FC = () => {
-  useEffect(() => {
-    // 应用启动时预加载常用数据
-    const preloadData = async () => {
-      await Promise.all([
-        commands.loadMaterials(),
-        commands.loadSpecies(),
-        commands.loadNutritionStandards(),
-      ]);
-    };
+```rust
+pub async fn preheat_deepseek_connection(
+    service: &DeepSeekService,
+) -> Result<()> {
+    // 发送一个简单请求预热连接
+    let _ = service.generate_suggestions(
+        vec!["test".to_string()],
+        SuggestionStyle::Formal,
+    ).await;
 
-    preloadData();
-  }, []);
-
-  return <AppContent />;
-};
+    Ok(())
+}
 ```
 
 ---
@@ -581,39 +621,46 @@ export const App: React.FC = () => {
 ### 1. 及时释放大对象
 
 ```rust
-pub async fn process_large_dataset(data: Vec<LargeData>) -> Result<()> {
-    for chunk in data.chunks(100) {
+pub async fn process_large_context(context: Vec<String>) -> Result<()> {
+    // 分批处理
+    for chunk in context.chunks(100) {
         process_chunk(chunk).await?;
         // chunk 处理完后自动释放
     }
-    // data 在函数结束时释放
+    // context 在函数结束时释放
     Ok(())
 }
 ```
 
-### 2. 使用流式处理
+### 2. 限制缓存大小
 
 ```rust
-use futures::StreamExt;
+pub struct BoundedHistoryManager {
+    messages: Vec<WeChatMessage>,
+    max_size: usize,
+}
 
-pub async fn export_formulas_to_file(
-    &self,
-    file_path: &Path,
-) -> Result<()> {
-    let mut stream = sqlx::query_as::<_, Formula>(
-        "SELECT * FROM formulas"
-    )
-    .fetch(&self.pool);
-
-    let mut file = File::create(file_path).await?;
-
-    while let Some(formula) = stream.next().await {
-        let formula = formula?;
-        // 逐条写入，不需要一次性加载所有数据到内存
-        write_formula_to_file(&mut file, &formula).await?;
+impl BoundedHistoryManager {
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            max_size,
+        }
     }
 
-    Ok(())
+    pub fn add_message(&mut self, message: WeChatMessage) {
+        self.messages.push(message);
+
+        // 超出限制时删除旧消息
+        if self.messages.len() > self.max_size {
+            self.messages.remove(0);
+        }
+    }
+
+    pub fn get_recent(&self, count: usize) -> &[WeChatMessage] {
+        let start = self.messages.len().saturating_sub(count);
+        &self.messages[start..]
+    }
 }
 ```
 
@@ -628,19 +675,20 @@ use tracing::{info, instrument};
 use std::time::Instant;
 
 #[instrument(skip(self))]
-pub async fn optimize_formula(
+pub async fn generate_suggestions(
     &self,
-    dto: OptimizeFormulaDto,
-) -> Result<OptimizationResult> {
+    context: Vec<String>,
+    style: SuggestionStyle,
+) -> Result<Vec<Suggestion>> {
     let start = Instant::now();
 
-    let result = self.perform_optimization(dto).await?;
+    let result = self.perform_generation(context, style).await?;
 
     let duration = start.elapsed();
     info!(
         duration_ms = duration.as_millis(),
-        formula_id = result.formula_id,
-        "配方优化完成"
+        suggestion_count = result.len(),
+        "建议生成完成"
     );
 
     Ok(result)
@@ -662,18 +710,28 @@ export const usePerformanceMonitor = (componentName: string) => {
     };
   }, [componentName]);
 };
+
+// 使用
+export const AssistantPanel: React.FC = () => {
+  usePerformanceMonitor('AssistantPanel');
+
+  return (
+    // ...
+  );
+};
 ```
 
 ---
 
 ## 七、性能基准
 
-### 目标性能指标
-- **应用启动时间**：< 2 秒
-- **配方优化计算**：< 5 秒（中等复杂度）
-- **数据库查询**：< 100ms（单表查询）
+### WeReply 目标性能指标
+- **消息监听延迟**：< 500ms（从微信消息到 Rust 接收）
+- **Agent 通信延迟**：< 100ms（IPC 往返）
+- **DeepSeek API 响应**：< 3s（建议生成）
 - **UI 响应时间**：< 100ms（用户操作到界面更新）
-- **大列表渲染**：< 500ms（1000 项）
+- **窗口跟随延迟**：< 200ms（微信窗口移动到助手窗口跟随）
+- **启动时间**：< 2s（应用启动到可用）
 
 ### 性能测试
 ```rust
@@ -683,16 +741,33 @@ mod performance_tests {
     use std::time::Instant;
 
     #[tokio::test]
-    async fn test_optimization_performance() {
+    async fn test_suggestion_generation_performance() {
         let service = setup_test_service().await;
-        let dto = create_test_formula_dto();
+        let context = vec!["你好".to_string(), "最近怎么样".to_string()];
 
         let start = Instant::now();
-        let result = service.optimize_formula(dto).await;
+        let result = service.generate_suggestions(context, SuggestionStyle::Friendly).await;
         let duration = start.elapsed();
 
         assert!(result.is_ok());
-        assert!(duration.as_secs() < 5, "优化耗时超过 5 秒");
+        assert!(duration.as_secs() < 5, "建议生成耗时超过 5 秒");
+    }
+
+    #[tokio::test]
+    async fn test_ipc_communication_performance() {
+        let mut agent = setup_test_agent().await;
+        let message = AgentMessage::MessageNew {
+            content: "test".to_string(),
+            sender: "user".to_string(),
+            timestamp: 0,
+        };
+
+        let start = Instant::now();
+        agent.send_message(&message).await.unwrap();
+        let response = agent.receive_message().await.unwrap();
+        let duration = start.elapsed();
+
+        assert!(duration.as_millis() < 200, "IPC 通信耗时超过 200ms");
     }
 }
 ```
@@ -729,30 +804,73 @@ process(cloned);
 process(&data);  // ✓ 使用引用
 ```
 
-### 3. 未使用索引的查询
+### 3. 不使用缓存
 **✗ 错误**：
-```sql
-SELECT * FROM formulas WHERE LOWER(name) = 'test';  -- ✗ 无法使用索引
+```rust
+// 每次都调用 API
+pub async fn get_suggestions(&self, context: Vec<String>) -> Result<Vec<Suggestion>> {
+    self.deepseek_service.generate_suggestions(context, style).await
+}
 ```
 
 **✓ 正确**：
-```sql
-SELECT * FROM formulas WHERE name = 'Test';  -- ✓ 可以使用索引
-CREATE INDEX idx_formulas_name ON formulas(name);
+```rust
+// 使用缓存
+pub async fn get_suggestions(&self, context: Vec<String>) -> Result<Vec<Suggestion>> {
+    let cache_key = calculate_context_hash(&context);
+    self.cache.get_or_generate(cache_key, async {
+        self.deepseek_service.generate_suggestions(context, style).await
+    }).await
+}
 ```
 
 ### 4. 组件过度渲染
 **✗ 错误**：
 ```typescript
 // 每次父组件渲染都会创建新函数
-<Child onClick={() => handleClick()} />
+<SuggestionItem onClick={() => handleClick()} />
 ```
 
 **✓ 正确**：
 ```typescript
 const handleClick = useCallback(() => { }, []);
-<Child onClick={handleClick} />
+<SuggestionItem onClick={handleClick} />
 ```
+
+### 5. 阻塞异步运行时
+**✗ 错误**：
+```rust
+pub async fn process_data() {
+    std::thread::sleep(Duration::from_secs(1));  // ✗ 阻塞整个运行时
+}
+```
+
+**✓ 正确**：
+```rust
+pub async fn process_data() {
+    tokio::time::sleep(Duration::from_secs(1)).await;  // ✓ 异步睡眠
+}
+```
+
+---
+
+## WeReply 特定性能优化
+
+### 1. 微信消息监听优化
+- 使用消息去重减少重复处理
+- 批量处理消息减少 IPC 开销
+- 限制上下文大小减少内存使用
+
+### 2. DeepSeek API 调用优化
+- 复用 HTTP 连接池
+- 实现请求缓存（相同上下文）
+- 并发限制（防止过载）
+- 设置合理超时
+
+### 3. 窗口跟随优化
+- 使用节流减少更新频率
+- 仅在窗口移动时更新
+- 使用硬件加速（如可用）
 
 ---
 
@@ -760,5 +878,6 @@ const handleClick = useCallback(() => { }, []);
 
 - [Rust Performance Book](https://nnethercote.github.io/perf-book/)
 - [React Performance Optimization](https://react.dev/learn/render-and-commit)
-- [SQLite Performance Tuning](https://www.sqlite.org/pragma.html)
-- [Tauri Performance Guide](https://tauri.app/v1/guides/building/performance/)
+- [Tokio Performance Guide](https://tokio.rs/tokio/topics/performance)
+- [Tauri Performance Best Practices](https://tauri.app/v1/guides/building/performance/)
+- [Moka Cache Documentation](https://docs.rs/moka/)

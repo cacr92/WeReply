@@ -1,0 +1,38 @@
+{
+  "name": "macos-agent-development",
+  "version": "1.0.0",
+  "description": "macOS Agent 开发规范（Swift + Accessibility API），包括项目结构、Accessibility API 使用、UI Automation、IPC 集成等",
+  "triggers": {
+    "keywords": [
+      "macOS Agent",
+      "Swift Agent",
+      "Accessibility API",
+      "macOS 开发",
+      "Swift 开发",
+      "UI Automation",
+      "WeChatMonitor.swift",
+      "InputWriter.swift"
+    ],
+    "filePatterns": [
+      "platform_agents/macos_agent/**/*.swift",
+      "platform_agents/**/*.swift"
+    ],
+    "contexts": [
+      "macOS Agent 开发",
+      "Swift Agent",
+      "Accessibility API"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["swift", "macos", "agent", "accessibility", "platform-specific"],
+  "relatedSkills": [
+    "wechat-automation",
+    "ipc-communication"
+  ],
+  "relatedRules": [
+    "06-security-standards.md",
+    "07-testing-standards.md"
+  ]
+}

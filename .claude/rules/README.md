@@ -1,6 +1,6 @@
 # Claude Code 规则文件说明
 
-本目录包含饲料配方优化系统（CaCrFeedFormula）的 Claude Code 详细开发规范。
+本目录包含微信回复建议助手（WeReply）的 Claude Code 详细开发规范。
 
 ## 📁 文件列表
 
@@ -15,8 +15,8 @@
 Rust 后端开发规范，包含：
 - 类型系统规范（Tauri 命令、specta 类型导出）
 - 异步编程规范（Tokio 使用）
-- 数据库访问规范（SQLx 使用）
-- 事务处理规范
+- IPC 通信规范（JSON 协议）
+- DeepSeek API 集成规范
 - 错误处理规范（anyhow + ApiResponse）
 - 性能优化规范（缓存、并行计算）
 - 日志记录规范（tracing）
@@ -31,17 +31,17 @@ React TypeScript 前端开发规范，包含：
 - Ant Design 使用规范（message 组件）
 - Tauri 集成规范（使用生成的 commands）
 - 性能优化规范（memo, useCallback, useMemo）
+- 窗口跟随功能实现
 - 代码组织规范
 
-### 04-database-standards.md
-数据库与数据访问规范，包含：
-- Migration 规范（文件命名、SQL 编写）
-- SQLx 使用规范（查询宏、参数绑定）
-- 事务处理规范
-- 查询优化规范（索引、避免 N+1 查询、批量操作）
-- 数据库连接池管理
-- 数据类型映射
-- 常见陷阱和测试规范
+### 04-configuration-standards.md
+配置管理与环境变量规范，包含：
+- 配置文件结构（用户配置、环境变量、默认配置）
+- API 密钥管理（系统密钥链存储）
+- 用户配置管理（JSON 持久化）
+- 环境变量读取规范
+- 前端配置界面
+- 配置验证规范
 
 ### 05-lsp-usage-standards.md
 LSP (Language Server Protocol) 使用规范，包含：
@@ -55,11 +55,12 @@ LSP (Language Server Protocol) 使用规范，包含：
 ### 06-security-standards.md
 安全开发规范（针对桌面应用），包含：
 - 桌面应用安全特点（与 Web 应用的区别）
-- 密钥管理（环境变量、加密存储）
+- 密钥管理（系统密钥链存储）
 - Tauri 命令安全（参数验证、权限控制）
-- SQL 注入防护（SQLx 参数化查询）
+- IPC 通信安全（Agent 消息验证）
+- DeepSeek API 安全（API 密钥保护）
 - 输入验证（前后端双重验证）
-- 敏感数据保护（日志、错误消息���
+- 敏感数据保护（隐私保护、日志安全）
 - 文件操作安全（路径验证、类型验证）
 - 依赖安全（cargo audit）
 - Rust 特定安全（避免 unsafe）
@@ -67,10 +68,10 @@ LSP (Language Server Protocol) 使用规范，包含：
 
 ### 07-testing-standards.md
 测试规范（80% 覆盖率要求），包含：
-- 测试覆盖���要求（强制 80%）
+- 测试覆盖率要求（强制 80%）
 - 单元测试（Rust + TypeScript）
-- 集成测试（数据库、API）
-- Mock 策略（Tauri 命令、数据库）
+- 集成测试（IPC 通信、Agent 交互、DeepSeek API）
+- Mock 策略（Tauri 命令、Agent 通信、DeepSeek API）
 - 测试最佳实践（测试行为而非实现）
 - 测试组织结构
 - 覆盖率验证（tarpaulin, vitest）
@@ -78,9 +79,10 @@ LSP (Language Server Protocol) 使用规范，包含：
 
 ### 08-performance-standards.md
 性能优化规范，包含：
-- Rust 后端性能优化（并行计算、缓存、避免克隆）
+- Rust 后端性能优化（并发控制、缓存策略、避免克隆）
+- IPC 通信优化（批量处理、消息去重、连接池）
+- DeepSeek API 优化（连接池、超时控制、重试策略）
 - React 前端性能优化（memo, useCallback, useMemo, 虚拟滚动）
-- 数据库性能优化（索引、避免 N+1、批量操作、SQLite 优化）
 - 启动性能优化（延迟加载、预加载）
 - 内存优化（及时释放、流式处理）
 - 性能监控（tracing）
@@ -119,15 +121,14 @@ LSP (Language Server Protocol) 使用规范，包含：
 2. 禁止使用 `as any` 类型转换（TypeScript）
 3. 禁止使用原始 `invoke`（使用生成的 commands）
 4. 禁止在循环中使用 Hooks（React）
-5. 禁止忘记提交事务（数据库）
-6. 禁止 `SELECT *`（数据库查询）
+5. 禁止硬编码 API 密钥（使用系统密钥链存储）
+6. 禁止阻塞异步运行时（使用 `tokio::spawn` 或 `tokio::time::sleep`）
 
 ### 必须遵守
 1. 使用 specta 导出类型（Rust → TypeScript）
 2. 使用 `message.error/success/warning`（前端提示）
 3. 使用 tracing 日志（后端日志）
 4. 使用 `anyhow::Result + ApiResponse`（错误处理）
-5. 使用 SQLx 编译时检查（数据库查询）
-6. 使用事务处理复杂操作（数据一致性）
+5. 使用 JSON 进行 IPC 通信（Rust ↔ Agent 使用 JSON 协议）
+6. 处理 Agent 异常（优雅处理 Agent 崩溃和超时）
 7. **主动使用 LSP 工具**（修改代码前查看、评估影响、理解结构）
-

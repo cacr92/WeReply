@@ -1,0 +1,45 @@
+{
+  "name": "ipc-communication",
+  "version": "1.0.0",
+  "description": "IPC 通信协议规范，包括 JSON 消息格式、stdin/stdout 通信、Rust 和 Agent 实现、错误处理等",
+  "triggers": {
+    "keywords": [
+      "IPC",
+      "进程通信",
+      "stdin",
+      "stdout",
+      "JSON",
+      "Agent 通信",
+      "消息协议",
+      "序列化",
+      "反序列化",
+      "进程间通信",
+      "orchestrator"
+    ],
+    "filePatterns": [
+      "src/orchestrator/**/*.rs",
+      "platform_agents/**/*.py",
+      "platform_agents/**/*.swift"
+    ],
+    "contexts": [
+      "IPC 通信",
+      "Agent 协议",
+      "进程通信",
+      "消息传递"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["ipc", "communication", "json", "protocol", "stdin-stdout", "agent"],
+  "relatedSkills": [
+    "wechat-automation",
+    "python-agent-development",
+    "macos-agent-development"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "06-security-standards.md",
+    "08-performance-standards.md"
+  ]
+}
