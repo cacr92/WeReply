@@ -18,7 +18,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+anyhow = "1.0"
+keyring = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+specta = { version = "1", features = ["serde", "functions"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+uuid = { version = "1", features = ["v4"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
