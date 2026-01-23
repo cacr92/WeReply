@@ -7,14 +7,17 @@ use crate::secret::ApiKeyManager;
 use crate::state::{AppState, ChatMessage};
 use crate::types::{ErrorPayload, Platform, RuntimeState, SuggestionsUpdated};
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use tokio::time::{timeout, Duration};
 use tauri::{Emitter, Manager};
 use tracing::{info, warn};
 
@@ -40,6 +43,9 @@ impl AgentHandle {
 }
 
 pub async fn start_agent(app: AppHandle, state: Arc<Mutex<AppState>>) -> Result<AgentHandle> {
+    if cfg!(target_os = "windows") {
+        ensure_windows_agent_dependencies(&app).await?;
+    }
     let (command, args, workdir) = resolve_agent_command(&app)?;
     let mut child = Command::new(command)
         .args(args)
@@ -352,4 +358,144 @@ fn find_agent_root(app: &AppHandle) -> Result<PathBuf> {
         }
     }
     anyhow::bail!("未找到 platform_agents 目录");
+}
+
+const WINDOWS_AGENT_MODULES: &[&str] = &["wxauto", "pyautogui", "pyperclip"];
+const WINDOWS_DEP_INSTALL_TIMEOUT_SECONDS: u64 = 60;
+
+static WINDOWS_DEP_READY: AtomicBool = AtomicBool::new(false);
+static WINDOWS_DEP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn windows_dep_lock() -> &'static Mutex<()> {
+    WINDOWS_DEP_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn python_check_args(modules: &[&str]) -> Vec<String> {
+    let mut script = String::new();
+    for module in modules {
+        script.push_str("import ");
+        script.push_str(module);
+        script.push('\n');
+    }
+    vec!["-c".to_string(), script]
+}
+
+fn pip_install_args(requirements: &str) -> Vec<String> {
+    vec![
+        "-m".to_string(),
+        "pip".to_string(),
+        "install".to_string(),
+        "--disable-pip-version-check".to_string(),
+        "--no-input".to_string(),
+        "-r".to_string(),
+        requirements.to_string(),
+    ]
+}
+
+fn windows_requirements_path(base: &Path) -> PathBuf {
+    base.join("platform_agents")
+        .join("windows")
+        .join("requirements.txt")
+}
+
+async fn run_python_command(python: &str, args: Vec<String>, workdir: &Path) -> Result<()> {
+    let output = Command::new(python)
+        .args(args)
+        .current_dir(workdir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("调用 Python 失败")?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    warn!("Python 执行失败 stdout: {}", stdout.trim());
+    warn!("Python 执行失败 stderr: {}", stderr.trim());
+    anyhow::bail!("Python 命令执行失败");
+}
+
+async fn ensure_windows_agent_dependencies(app: &AppHandle) -> Result<()> {
+    if WINDOWS_DEP_READY.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let _guard = windows_dep_lock().lock().await;
+    if WINDOWS_DEP_READY.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let base = find_agent_root(app)?;
+    let requirements = windows_requirements_path(&base);
+    if !requirements.exists() {
+        anyhow::bail!("未找到 Windows Agent 依赖列表");
+    }
+
+    info!("检测 Windows Agent Python 依赖");
+    let python = "python";
+    if run_python_command(python, python_check_args(WINDOWS_AGENT_MODULES), &base).await.is_ok() {
+        WINDOWS_DEP_READY.store(true, Ordering::SeqCst);
+        return Ok(());
+    }
+
+    info!("依赖缺失，开始自动安装");
+    let install = timeout(
+        Duration::from_secs(WINDOWS_DEP_INSTALL_TIMEOUT_SECONDS),
+        run_python_command(
+            python,
+            pip_install_args(&requirements.to_string_lossy()),
+            &base,
+        ),
+    )
+    .await
+    .context("安装依赖超时")?;
+
+    install.context("自动安装依赖失败")?;
+
+    info!("依赖安装完成，进行复检");
+    run_python_command(python, python_check_args(WINDOWS_AGENT_MODULES), &base)
+        .await
+        .context("依赖复检失败")?;
+
+    WINDOWS_DEP_READY.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn python_check_args_include_required_modules() {
+        let args = python_check_args(&["wxauto", "pyautogui", "pyperclip"]);
+        assert_eq!(args[0], "-c");
+        assert!(args[1].contains("import wxauto"));
+        assert!(args[1].contains("import pyautogui"));
+        assert!(args[1].contains("import pyperclip"));
+    }
+
+    #[test]
+    fn pip_install_args_include_requirements_flag() {
+        let args = pip_install_args("C:/path/requirements.txt");
+        assert_eq!(args[0], "-m");
+        assert_eq!(args[1], "pip");
+        assert!(args.iter().any(|arg| arg == "-r"));
+    }
+
+    #[test]
+    fn windows_requirements_path_is_under_platform_agents() {
+        let base = std::path::Path::new("C:/app");
+        let path = windows_requirements_path(base);
+        assert!(path.ends_with("platform_agents/windows/requirements.txt"));
+    }
+
+    #[test]
+    fn python_check_args_are_stable_for_three_modules() {
+        let args = python_check_args(&["wxauto", "pyautogui", "pyperclip"]);
+        assert_eq!(args.len(), 2);
+    }
 }
