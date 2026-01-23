@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- 设置默认运行二进制为 `wereply`，避免 `cargo run` 需要手动指定 `--bin`。
 - 修复保存与诊断 API Key 时参数名不匹配导致的调用失败。
 - 新增 bindings 自动生成器，确保前后端参数命名一致。
 - 将 Tauri + React 项目骨架从 worktree 移回仓库根目录。
