@@ -27,6 +27,9 @@ wxauto 仅支持 Windows，且官方仓库已归档为只读，因此 Windows �
 - `docs/security.md`：安全与隐私
 - `docs/roadmap.md`：里程碑
 
+## 开发
+运行 `npm run tauri:dev` 进行开发。
+
 ## 配置
 环境变量示例见 `.env.example`。API Key 仅存系统安全存储，不落地明文。
 

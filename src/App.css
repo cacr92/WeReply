@@ -1,0 +1,113 @@
+:root {
+  font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #1e1e1e;
+  background-color: #f7f4f0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.2px;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+  color: #4a4a4a;
+}
+
+.actions button {
+  background: #1e1e1e;
+  color: #f7f4f0;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  background: #343434;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suggestions h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.suggestions li {
+  background: #ffffff;
+  border: 1px solid #e6e0d9;
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.suggestion-meta {
+  font-size: 12px;
+  color: #8a6d3b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.suggestion-text {
+  font-size: 15px;
+  color: #2b2b2b;
+}
+
+.suggestions button {
+  justify-self: start;
+  background: #f2ede7;
+  border: 1px solid #e6e0d9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.suggestions button:hover {
+  background: #ebe3db;
+}
+
+.muted {
+  color: #8d8d8d;
+  font-size: 14px;
+}
