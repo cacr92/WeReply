@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "cross-env TAURI_CONFIG=src-tauri/tauri.conf.dev.json tauri dev",
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "antd": "^5.24.7",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",
@@ -24,6 +27,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "cross-env": "^7.0.3",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^2.1.5"
   }
 }
