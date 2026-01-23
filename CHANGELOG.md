@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- 修复保存与诊断 API Key 时参数名不匹配导致的调用失败。
+- 新增 bindings 自动生成器，确保前后端参数命名一致。
 - 将 Tauri + React 项目骨架从 worktree 移回仓库根目录。
 - 添加应用源码与配置（`src/`、`src-tauri/`、`platform_agents/` 等）。
 - 更新 `README.md` 补充本地开发命令。

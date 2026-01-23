@@ -1,4 +1,5 @@
 mod agent;
+pub mod bindings;
 mod config;
 mod deepseek;
 mod ipc;
