@@ -2,14 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "antd";
 import "./App.css";
-import type {
-  Config,
-  ErrorPayload,
-  Status,
-  Suggestion,
-  SuggestionsUpdated,
-} from "./bindings";
+import type { ErrorPayload, Status, Suggestion, SuggestionsUpdated } from "./bindings";
 import { commands } from "./bindings";
+import type { ApiKeyStatus } from "./utils/apiKey";
+import { getApiKeyStatusLabel } from "./utils/apiKey";
 import { getStateLabel, getStyleLabel } from "./utils/labels";
 
 const DEFAULT_STATUS: Status = {
@@ -19,24 +15,8 @@ const DEFAULT_STATUS: Status = {
   last_error: "",
 };
 
-const DEFAULT_CONFIG: Config = {
-  deepseek_model: "deepseek-chat",
-  suggestion_count: 3,
-  context_max_messages: 10,
-  context_max_chars: 2000,
-  poll_interval_ms: 800,
-  temperature: 0.7,
-  top_p: 1.0,
-  base_url: "https://api.deepseek.com",
-  timeout_ms: 12000,
-  max_retries: 2,
-  log_level: "info",
-  log_to_file: false,
-};
-
 function App() {
   const [status, setStatus] = useState<Status>(DEFAULT_STATUS);
-  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(
     null,
@@ -44,6 +24,7 @@ function App() {
   const [draftText, setDraftText] = useState("");
   const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>("idle");
   const [lastChatId, setLastChatId] = useState<string | null>(null);
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("wereply-theme");
@@ -57,19 +38,16 @@ function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [statusRes, configRes, keyRes] = await Promise.all([
+      const [statusRes, keyRes] = await Promise.all([
         commands.getStatus(),
-        commands.getConfig(),
         commands.getApiKeyStatus(),
       ]);
       if (statusRes.success && statusRes.data) {
         setStatus(statusRes.data);
       }
-      if (configRes.success && configRes.data) {
-        setConfig(configRes.data);
-      }
       if (keyRes.success && typeof keyRes.data === "boolean") {
         setApiKeySet(keyRes.data);
+        setApiKeyStatus(keyRes.data ? "connected" : "idle");
       }
     };
     void bootstrap();
@@ -163,34 +141,22 @@ function App() {
     }
   }, [draftText, lastChatId]);
 
-  const updateConfigField = useCallback(
-    <K extends keyof Config>(key: K, value: Config[K]) => {
-      setConfig((prev) => ({ ...prev, [key]: value }));
-    },
-    [],
-  );
-
-  const handleSaveConfig = useCallback(async () => {
-    const res = await commands.setConfig(config);
-    if (res.success) {
-      message.success("配置已保存");
-    } else {
-      message.error(res.message || "保存失败");
-    }
-  }, [config]);
-
   const handleSaveApiKey = useCallback(async () => {
     if (!apiKeyInput.trim()) {
       message.warning("请输入 API 密钥");
       return;
     }
+    setApiKeyStatus("connecting");
     const res = await commands.saveApiKey(apiKeyInput.trim());
     if (res.success) {
-      message.success("API 密钥已保存");
+      message.success("API 密钥已保存并连接成功");
       setApiKeyInput("");
       setApiKeySet(true);
+      setApiKeyStatus("connected");
     } else {
-      message.error(res.message || "保存失败");
+      message.error(res.message || "连接失败");
+      setApiKeySet(false);
+      setApiKeyStatus("failed");
     }
   }, [apiKeyInput]);
 
@@ -199,6 +165,7 @@ function App() {
     if (res.success) {
       message.success("API 密钥已删除");
       setApiKeySet(false);
+      setApiKeyStatus("idle");
     } else {
       message.error(res.message || "删除失败");
     }
@@ -315,171 +282,10 @@ function App() {
           </div>
         </div>
 
-        <div className="panel config">
-          <div className="panel-header">
-            <h2>配置面板</h2>
-            <span>DeepSeek / 监听参数</span>
-          </div>
-          <div className="config-grid">
-            <label>
-              模型
-              <input
-                value={config.deepseek_model}
-                onChange={(event) =>
-                  updateConfigField("deepseek_model", event.target.value)
-                }
-              />
-            </label>
-            <label>
-              Base URL
-              <input
-                value={config.base_url}
-                onChange={(event) =>
-                  updateConfigField("base_url", event.target.value)
-                }
-              />
-            </label>
-            <label>
-              temperature
-              <input
-                type="number"
-                step="0.1"
-                value={config.temperature}
-                onChange={(event) =>
-                  updateConfigField(
-                    "temperature",
-                    Number.parseFloat(event.target.value || "0"),
-                  )
-                }
-              />
-            </label>
-            <label>
-              top_p
-              <input
-                type="number"
-                step="0.1"
-                value={config.top_p}
-                onChange={(event) =>
-                  updateConfigField(
-                    "top_p",
-                    Number.parseFloat(event.target.value || "0"),
-                  )
-                }
-              />
-            </label>
-            <label>
-              建议数量
-              <input
-                type="number"
-                value={config.suggestion_count}
-                onChange={(event) =>
-                  updateConfigField(
-                    "suggestion_count",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              上下文条数
-              <input
-                type="number"
-                value={config.context_max_messages}
-                onChange={(event) =>
-                  updateConfigField(
-                    "context_max_messages",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              上下文字符上限
-              <input
-                type="number"
-                value={config.context_max_chars}
-                onChange={(event) =>
-                  updateConfigField(
-                    "context_max_chars",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              监听间隔 (ms)
-              <input
-                type="number"
-                value={config.poll_interval_ms}
-                onChange={(event) =>
-                  updateConfigField(
-                    "poll_interval_ms",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              超时 (ms)
-              <input
-                type="number"
-                value={config.timeout_ms}
-                onChange={(event) =>
-                  updateConfigField(
-                    "timeout_ms",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              最大重试
-              <input
-                type="number"
-                value={config.max_retries}
-                onChange={(event) =>
-                  updateConfigField(
-                    "max_retries",
-                    Number.parseInt(event.target.value || "0", 10),
-                  )
-                }
-              />
-            </label>
-            <label>
-              日志级别
-              <select
-                value={config.log_level}
-                onChange={(event) =>
-                  updateConfigField("log_level", event.target.value)
-                }
-              >
-                <option value="trace">trace</option>
-                <option value="debug">debug</option>
-                <option value="info">info</option>
-                <option value="warn">warn</option>
-                <option value="error">error</option>
-              </select>
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={config.log_to_file}
-                onChange={(event) =>
-                  updateConfigField("log_to_file", event.target.checked)
-                }
-              />
-              写入日志文件
-            </label>
-          </div>
-          <div className="config-actions">
-            <button onClick={handleSaveConfig}>保存配置</button>
-          </div>
-        </div>
-
         <div className="panel security">
           <div className="panel-header">
             <h2>API 密钥</h2>
-            <span>{apiKeySet ? "已保存" : "未设置"}</span>
+            <span>{getApiKeyStatusLabel(apiKeyStatus)}</span>
           </div>
           <div className="api-key">
             <input
@@ -488,10 +294,14 @@ function App() {
               value={apiKeyInput}
               onChange={(event) => setApiKeyInput(event.target.value)}
             />
-            <button onClick={handleSaveApiKey}>保存密钥</button>
-            <button className="ghost" onClick={handleDeleteApiKey}>
-              删除密钥
+            <button onClick={handleSaveApiKey} disabled={apiKeyStatus === "connecting"}>
+              保存并连接
             </button>
+            {apiKeySet ? (
+              <button className="ghost" onClick={handleDeleteApiKey}>
+                删除密钥
+              </button>
+            ) : null}
           </div>
         </div>
       </section>
