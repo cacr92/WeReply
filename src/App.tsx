@@ -7,6 +7,7 @@ import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
 import { getApiKeyStatusLabel, resolveApiKeySaveOutcome } from "./utils/apiKey";
 import { getStateLabel, getStyleLabel } from "./utils/labels";
+import { normalizeReplyText } from "./utils/reply";
 
 const DEFAULT_STATUS: Status = {
   state: "idle",
@@ -133,7 +134,12 @@ function App() {
       message.warning("暂无可写入的聊天");
       return;
     }
-    const res = await commands.writeSuggestion(lastChatId, draftText.trim());
+    const normalized = normalizeReplyText(draftText);
+    if (!normalized.ok) {
+      message.warning(normalized.reason);
+      return;
+    }
+    const res = await commands.writeSuggestion(lastChatId, normalized.text);
     if (res.success) {
       message.success("已写入输入框");
     } else {
