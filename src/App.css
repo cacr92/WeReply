@@ -57,10 +57,10 @@ textarea {
 .app {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 36px 24px 60px;
+  padding: 24px 24px 32px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   animation: fadeUp 0.6s ease;
 }
 
@@ -120,49 +120,30 @@ textarea {
   color: #e54f3c;
 }
 
-.status-card {
-  background: var(--surface-strong);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-soft);
-}
-
-.status-card .label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.status-card strong {
-  display: block;
-  margin-top: 4px;
-}
-
-.actions {
+.controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .grid {
   display: grid;
-  gap: 20px;
+  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.grid.compact {
+  grid-template-columns: minmax(260px, 1.2fr) minmax(240px, 0.8fr);
 }
 
 .panel {
   background: var(--surface-strong);
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: 18px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border-soft);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   animation: fadeUp 0.6s ease;
 }
 
@@ -190,22 +171,17 @@ textarea {
 .suggestion {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 12px;
   text-align: left;
   background: rgba(255, 255, 255, 0.4);
   display: grid;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 html[data-theme="dark"] .suggestion {
   background: rgba(0, 0, 0, 0.25);
-}
-
-.suggestion.active {
-  border-color: var(--accent);
-  box-shadow: 0 10px 24px rgba(217, 111, 50, 0.2);
 }
 
 .suggestion .tag {
@@ -226,30 +202,19 @@ html[data-theme="dark"] .suggestion {
   text-align: center;
 }
 
-.editor textarea {
-  min-height: 140px;
+.reply textarea {
+  min-height: 120px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-soft);
   padding: 12px;
-  resize: vertical;
+  resize: none;
   background: transparent;
   color: inherit;
 }
 
-.editor-actions {
+.reply-actions {
   display: flex;
   justify-content: flex-end;
-}
-
-.preview {
-  border-radius: var(--radius-md);
-  background: var(--highlight);
-  padding: 12px;
-}
-
-.preview p {
-  margin: 6px 0 0;
-  font-size: 14px;
 }
 
 .api-key {
@@ -312,7 +277,12 @@ button.ghost:hover {
     align-items: flex-start;
   }
 
-  .status-card {
+  .controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .grid.compact {
     grid-template-columns: 1fr;
   }
 }
