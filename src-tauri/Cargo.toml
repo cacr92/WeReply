@@ -20,7 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 anyhow = "1.0"
 keyring = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 specta = { version = "1", features = ["serde", "functions"] }
 tauri = { version = "2.9.5", features = [] }
 tauri-plugin-opener = "2.5.3"

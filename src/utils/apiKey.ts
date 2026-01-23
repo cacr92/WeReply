@@ -17,7 +17,13 @@ export const resolveApiKeySaveOutcome = (
   error?: unknown,
 ): { status: ApiKeyStatus; apiKeySet: boolean; clearInput: boolean; message: string } => {
   if (error) {
-    return { status: "failed", apiKeySet: false, clearInput: false, message: "连接失败" };
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "连接失败";
+    return { status: "failed", apiKeySet: false, clearInput: false, message };
   }
   if (result?.success) {
     return {

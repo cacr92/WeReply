@@ -15,7 +15,7 @@ describe("api key save outcome", () => {
   it("returns failed when invoke throws", () => {
     const result = resolveApiKeySaveOutcome(null, new Error("invoke failed"));
     expect(result.status).toBe("failed");
-    expect(result.message).toBe("连接失败");
+    expect(result.message).toBe("invoke failed");
     expect(result.apiKeySet).toBe(false);
     expect(result.clearInput).toBe(false);
   });
