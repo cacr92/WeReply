@@ -1,7 +1,7 @@
 ---
 alwaysApply: true
 ---
-# WeReply 微信回复建议助手 
+# WeReply 微信回复建议助手
 
 > **快速参考**: 本文件包含核心工作流和编程规范。详细技术规范请参考 `.claude/rules/` 目录。
 
@@ -81,14 +81,14 @@ alwaysApply: true
 
 **自动识别规则**：
 
-| 文件特征                      | 自动调用 Skill                   | 用途                  |
-| ----------------------------- | -------------------------------- | --------------------- |
-| `src/wechat/**/*.rs`       | `wechat-automation`            | 微信监听与自动化规范   |
-| `src/ai/**/*.rs`           | `deepseek-integration`         | DeepSeek API 集成规范  |
-| `frontend/src/**/*.tsx`     | `react-typescript-development` | React TypeScript 规范 |
-| `src/**/commands.rs`       | `tauri-development`            | Tauri 命令规范        |
+| 文件特征                        | 自动调用 Skill                   | 用途                  |
+| ------------------------------- | -------------------------------- | --------------------- |
+| `src/wechat/**/*.rs`          | `wechat-automation`            | 微信监听与自动化规范  |
+| `src/ai/**/*.rs`              | `deepseek-integration`         | DeepSeek API 集成规范 |
+| `frontend/src/**/*.tsx`       | `react-typescript-development` | React TypeScript 规范 |
+| `src/**/commands.rs`          | `tauri-development`            | Tauri 命令规范        |
 | `src/**/*.rs`（非 wechat/ai） | `rust-optimization`            | Rust 性能优化         |
-| 任何 API 设计                 | `api-design`                   | API 设计规范          |
+| 任何 API 设计                   | `api-design`                   | API 设计规范          |
 
 #### 步骤 5：TDD - 先写测试（test-driven-development）
 
@@ -261,7 +261,6 @@ alwaysApply: true
 - 不要陷入死循环，及时调整思路和方法
 - 遇到困难时，回到需求分析阶段重新审视问题
 - 每一步都先输出在做什么，然后开始执行
-- 每次完成代码修改后，必须将变更同步到项目主目录（非 worktree）供用户验证，再继续下一步
 
 ---
 
