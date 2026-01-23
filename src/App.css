@@ -230,6 +230,25 @@ html[data-theme="dark"] .suggestion {
   color: inherit;
 }
 
+.model-select {
+  display: grid;
+  gap: 8px;
+}
+
+.model-select select {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: inherit;
+}
+
+.model-select p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 button {
   padding: 10px 16px;
   border-radius: 999px;

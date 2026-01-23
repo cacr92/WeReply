@@ -65,4 +65,7 @@ export const commands = {
   getApiKeyStatus: (): Promise<ApiResponse<boolean>> =>
     invoke("get_api_key_status"),
   deleteApiKey: (): Promise<ApiResponse<null>> => invoke("delete_api_key"),
+  listModels: (): Promise<ApiResponse<string[]>> => invoke("list_models"),
+  setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>
+    invoke("set_deepseek_model", { model }),
 };

@@ -9,28 +9,19 @@ use uuid::Uuid;
 const SYSTEM_PROMPT: &str = "你是回复建议助手。请根据对话内容生成 3 条回复建议，分别为正式、\
 中性、轻松风格。返回 JSON 数组，每个元素包含 style(formal|neutral|casual) 与 text。";
 const VALIDATION_PROMPT: &str = "请回复一个简短确认词，用于验证连接。";
+const DEFAULT_MODELS: [&str; 2] = ["deepseek-chat", "deepseek-reasoner"];
 
 fn cap_timeout_ms(timeout_ms: u64) -> u64 {
     timeout_ms.clamp(2_000, 8_000)
 }
 
-pub fn build_request(
-    user_input: &str,
-    suggestion_count: u32,
-    model: &str,
-    temperature: f32,
-    top_p: f32,
-) -> Value {
+pub fn build_request(user_input: &str, model: &str) -> Value {
     json!({
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_input}
-        ],
-        "temperature": temperature,
-        "top_p": top_p,
-        "n": suggestion_count,
-        "stream": false
+        ]
     })
 }
 
@@ -40,12 +31,52 @@ pub fn build_validation_request(user_input: &str, model: &str) -> Value {
         "messages": [
             {"role": "system", "content": VALIDATION_PROMPT},
             {"role": "user", "content": user_input}
-        ],
-        "temperature": 0.0,
-        "top_p": 1.0,
-        "n": 1,
-        "stream": false
+        ]
     })
+}
+
+pub fn is_supported_model(model: &str) -> bool {
+    DEFAULT_MODELS.iter().any(|item| item == &model)
+}
+
+fn default_models() -> Vec<String> {
+    DEFAULT_MODELS.iter().map(|model| (*model).to_string()).collect()
+}
+
+fn normalize_models(models: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for model in DEFAULT_MODELS {
+        if models.iter().any(|item| item == model) {
+            normalized.push(model.to_string());
+        }
+    }
+    if normalized.is_empty() {
+        default_models()
+    } else {
+        normalized
+    }
+}
+
+fn build_chat_url(base_url: &str) -> String {
+    format!("{}/chat/completions", base_url.trim_end_matches('/'))
+}
+
+fn build_models_url(base_url: &str) -> String {
+    format!("{}/models", base_url.trim_end_matches('/'))
+}
+
+fn parse_models(raw: &str) -> Result<Vec<String>> {
+    let value: Value = serde_json::from_str(raw).context("响应 JSON 解析失败")?;
+    let Some(items) = value["data"].as_array() else {
+        return Ok(Vec::new());
+    };
+    let mut models = Vec::new();
+    for item in items {
+        if let Some(id) = item["id"].as_str() {
+            models.push(id.to_string());
+        }
+    }
+    Ok(models)
 }
 
 pub async fn validate_api_key(config: &Config, api_key: &str) -> Result<()> {
@@ -55,10 +86,7 @@ pub async fn validate_api_key(config: &Config, api_key: &str) -> Result<()> {
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .context("创建 HTTP 客户端失败")?;
-    let url = format!(
-        "{}/v1/chat/completions",
-        config.base_url.trim_end_matches('/')
-    );
+    let url = build_chat_url(&config.base_url);
     let request = build_validation_request("ping", &config.deepseek_model);
 
     let response = tokio::time::timeout(
@@ -97,17 +125,8 @@ pub async fn generate_suggestions(
         .timeout(Duration::from_millis(config.timeout_ms))
         .build()
         .context("创建 HTTP 客户端失败")?;
-    let url = format!(
-        "{}/v1/chat/completions",
-        config.base_url.trim_end_matches('/')
-    );
-    let request = build_request(
-        &prompt,
-        config.suggestion_count,
-        &config.deepseek_model,
-        config.temperature,
-        config.top_p,
-    );
+    let url = build_chat_url(&config.base_url);
+    let request = build_request(&prompt, &config.deepseek_model);
 
     let response = client
         .post(url)
@@ -132,6 +151,32 @@ pub async fn generate_suggestions(
             Ok(fallback_suggestions(&prompt))
         }
     }
+}
+
+pub async fn list_models(config: &Config, api_key: &str) -> Result<Vec<String>> {
+    let timeout_ms = cap_timeout_ms(config.timeout_ms);
+    let client = Client::builder()
+        .timeout(Duration::from_millis(timeout_ms))
+        .build()
+        .context("创建 HTTP 客户端失败")?;
+    let url = build_models_url(&config.base_url);
+
+    let response = tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        client.get(url).bearer_auth(api_key).send(),
+    )
+    .await
+    .context("DeepSeek 连接超时")?
+    .context("DeepSeek 连接失败")?;
+    let status = response.status();
+    let raw = response.text().await.context("读取 DeepSeek 响应失败")?;
+    if !status.is_success() {
+        let detail: String = raw.chars().take(200).collect();
+        warn!("DeepSeek 拉取模型失败: {}", status);
+        anyhow::bail!("DeepSeek 拉取模型失败: {} {}", status, detail);
+    }
+    let parsed = parse_models(&raw)?;
+    Ok(normalize_models(parsed))
 }
 
 fn build_prompt(context_messages: &[String]) -> String {
@@ -233,10 +278,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_request_payload() {
-        let req = build_request("hi", 3, "deepseek-chat", 0.7, 1.0);
+    fn build_request_payload_is_minimal() {
+        let req = build_request("hi", "deepseek-chat");
         assert_eq!(req["model"], "deepseek-chat");
         assert_eq!(req["messages"].as_array().unwrap().len(), 2);
+        assert!(req.get("temperature").is_none());
+        assert!(req.get("top_p").is_none());
+        assert!(req.get("n").is_none());
     }
 
     #[test]
@@ -248,12 +296,26 @@ mod tests {
     #[test]
     fn build_validation_request_is_minimal() {
         let req = build_validation_request("ping", "deepseek-chat");
-        assert_eq!(req["n"], 1);
-        assert_eq!(req["temperature"], 0.0);
+        assert_eq!(req["model"], "deepseek-chat");
+        assert!(req.get("temperature").is_none());
+        assert!(req.get("top_p").is_none());
+        assert!(req.get("n").is_none());
     }
 
     #[test]
     fn normalize_timeout_caps() {
         assert_eq!(cap_timeout_ms(12_000), 8_000);
+    }
+
+    #[test]
+    fn build_chat_url_trims_slash() {
+        let url = build_chat_url("https://api.deepseek.com/");
+        assert_eq!(url, "https://api.deepseek.com/chat/completions");
+    }
+
+    #[test]
+    fn normalize_models_filters_and_fallbacks() {
+        let models = normalize_models(vec!["x".to_string()]);
+        assert_eq!(models, vec!["deepseek-chat", "deepseek-reasoner"]);
     }
 }

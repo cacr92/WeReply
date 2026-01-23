@@ -108,9 +108,7 @@ alwaysApply: true
 **Bug 修复流程（11步）**：跳过步骤2和3，使用 `systematic-debugging` 替代
 
 **多任务并行**：智能任务分解 + 最小化隔离
-- **方案 A（推荐）**：使用 Sub-agents - 无物理隔离，简单高效
-- **方案 B**：使用 Background Tasks - 耗时任务不阻塞主流程
-- **方案 C**：使用 Git Worktree - 仅必要时（实验性开发）
+- **方案**：使用 Sub-agents - 无物理隔离，简单高效
 
 **并行前提**：
 - 任务修改不同文件

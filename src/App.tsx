@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { message, Modal } from "antd";
 import "./App.css";
@@ -7,6 +7,11 @@ import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
 import { getApiKeyStatusLabel, resolveApiKeySaveOutcome } from "./utils/apiKey";
 import { getStyleLabel } from "./utils/labels";
+import {
+  DEFAULT_MODELS,
+  normalizeModels,
+  resolveModelSelection,
+} from "./utils/models";
 import { normalizeReplyText } from "./utils/reply";
 
 const DEFAULT_STATUS: Status = {
@@ -25,12 +30,16 @@ function App() {
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>("idle");
   const [lastChatId, setLastChatId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0]);
+  const [modelLoading, setModelLoading] = useState(false);
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [statusRes, keyRes] = await Promise.all([
+      const [statusRes, keyRes, configRes] = await Promise.all([
         commands.getStatus(),
         commands.getApiKeyStatus(),
+        commands.getConfig(),
       ]);
       if (statusRes.success && statusRes.data) {
         setStatus(statusRes.data);
@@ -38,6 +47,9 @@ function App() {
       if (keyRes.success && typeof keyRes.data === "boolean") {
         setApiKeySet(keyRes.data);
         setApiKeyStatus(keyRes.data ? "connected" : "idle");
+      }
+      if (configRes.success && configRes.data?.deepseek_model) {
+        setSelectedModel(configRes.data.deepseek_model);
       }
     };
     void bootstrap();
@@ -138,6 +150,30 @@ function App() {
       }
       if (outcome.status === "connected") {
         message.success(outcome.message);
+        setModelLoading(true);
+        try {
+          const modelsRes = await commands.listModels();
+          if (modelsRes.success && Array.isArray(modelsRes.data)) {
+            const normalized = normalizeModels(modelsRes.data);
+            setModels(normalized);
+            const selection = resolveModelSelection(normalized, selectedModel);
+            setSelectedModel(selection.selected);
+            if (selection.changed) {
+              const saveRes = await commands.setDeepseekModel(selection.selected);
+              if (!saveRes.success) {
+                message.error(saveRes.message || "模型保存失败");
+              }
+            }
+          } else {
+            message.warning(modelsRes.message || "模型列表获取失败，使用默认模型");
+            setModels(DEFAULT_MODELS);
+          }
+        } catch (err) {
+          message.error("模型列表获取失败");
+          setModels(DEFAULT_MODELS);
+        } finally {
+          setModelLoading(false);
+        }
       } else {
         message.error(outcome.message);
       }
@@ -147,7 +183,7 @@ function App() {
       setApiKeySet(outcome.apiKeySet);
       message.error(outcome.message);
     }
-  }, [apiKeyInput]);
+  }, [apiKeyInput, selectedModel]);
 
   const handleDeleteApiKey = useCallback(async () => {
     const res = await commands.deleteApiKey();
@@ -159,6 +195,20 @@ function App() {
       message.error(res.message || "删除失败");
     }
   }, []);
+
+  const handleModelChange = useCallback(
+    async (event: ChangeEvent<HTMLSelectElement>) => {
+      const nextModel = event.target.value;
+      const previous = selectedModel;
+      setSelectedModel(nextModel);
+      const res = await commands.setDeepseekModel(nextModel);
+      if (!res.success) {
+        message.error(res.message || "模型保存失败");
+        setSelectedModel(previous);
+      }
+    },
+    [selectedModel],
+  );
 
   return (
     <main className="app">
@@ -256,6 +306,26 @@ function App() {
                 删除密钥
               </button>
             ) : null}
+          </div>
+        </div>
+        <div className="panel settings">
+          <div className="panel-header">
+            <h2>模型</h2>
+            <span>{modelLoading ? "获取中" : "自动获取"}</span>
+          </div>
+          <div className="model-select">
+            <select
+              value={selectedModel}
+              onChange={handleModelChange}
+              disabled={modelLoading}
+            >
+              {models.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <p>保存密钥后将刷新模型列表</p>
           </div>
         </div>
       </Modal>

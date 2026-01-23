@@ -9,6 +9,7 @@ mod types;
 
 use crate::agent::start_agent;
 use crate::config::load_config;
+use crate::config::save_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
 use crate::ipc::{InputWritePayload, ListenControlPayload};
@@ -35,6 +36,23 @@ async fn set_config(
     _config: Config,
 ) -> Result<ApiResponse<()>, String> {
     Ok(api_err("配置已固定为默认值"))
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn list_models(state: State<'_, SharedState>) -> Result<ApiResponse<Vec<String>>, String> {
+    let config = {
+        let guard = state.lock().await;
+        guard.config.clone()
+    };
+    let api_key = match ApiKeyManager::get_deepseek_api_key() {
+        Ok(key) => key,
+        Err(err) => return Ok(api_err(err.to_string())),
+    };
+    match deepseek::list_models(&config, &api_key).await {
+        Ok(models) => Ok(api_ok(models)),
+        Err(err) => Ok(api_err(err.to_string())),
+    }
 }
 
 #[tauri::command]
@@ -199,6 +217,25 @@ async fn save_api_key(
 
 #[tauri::command]
 #[specta::specta]
+async fn set_deepseek_model(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    model: String,
+) -> Result<ApiResponse<()>, String> {
+    if !deepseek::is_supported_model(&model) {
+        return Ok(api_err("不支持的模型"));
+    }
+    let mut guard = state.lock().await;
+    guard.config.deepseek_model = model;
+    if let Err(err) = save_config(&app, &guard.config) {
+        warn!("保存模型失败: {}", err);
+        return Ok(api_err(err.to_string()));
+    }
+    Ok(api_ok(()))
+}
+
+#[tauri::command]
+#[specta::specta]
 async fn get_api_key_status() -> Result<ApiResponse<bool>, String> {
     Ok(match ApiKeyManager::get_deepseek_api_key() {
         Ok(_) => api_ok(true),
@@ -318,7 +355,9 @@ pub fn run() {
             get_status,
             save_api_key,
             get_api_key_status,
-            delete_api_key
+            delete_api_key,
+            list_models,
+            set_deepseek_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
