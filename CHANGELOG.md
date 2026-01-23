@@ -8,3 +8,6 @@
 - 补齐后端命令与事件、Agent 进程管理、DeepSeek 调用与降级策略。
 - 新增配置与密钥链管理、结构化日志与基础测试用例。
 - 支持在项目根目录直接运行 `cargo tauri dev`。
+- 简化 UI，仅保留主题切换、状态、建议、编辑与 API Key 连接流程。
+- 保存 API Key 时进行 DeepSeek 连接验证，失败自动清理。
+- 新增监听控制 IPC，完善 Windows/macOS Agent 的监听与输入写入实现。
