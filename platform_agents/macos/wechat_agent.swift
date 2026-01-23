@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Foundation
 
 private let ackTimeout: TimeInterval = 3
