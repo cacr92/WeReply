@@ -1,0 +1,47 @@
+{
+  "name": "code-review",
+  "version": "2.0.0",
+  "description": "代码审查指导，包括质量检查、bug 发现、性能问题、安全漏洞等",
+  "triggers": {
+    "keywords": [
+      "审查",
+      "review",
+      "检查",
+      "check",
+      "代码质量",
+      "code quality",
+      "审查代码",
+      "code review",
+      "代码检查",
+      "检查bug",
+      "代码质量检查",
+      "发现问题",
+      "重构建议"
+    ],
+    "filePatterns": [
+      "**/*.rs",
+      "**/*.ts",
+      "**/*.tsx"
+    ],
+    "contexts": [
+      "代码审查",
+      "质量检查",
+      "重构建议",
+      "发现问题"
+    ]
+  },
+  "priority": "medium",
+  "autoLoad": false,
+  "category": "quality",
+  "tags": ["code-review", "quality", "security", "performance", "maintainability"],
+  "relatedSkills": [
+    "security-review",
+    "refactoring",
+    "debugging"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md",
+    "06-security-standards.md"
+  ]
+}

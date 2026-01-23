@@ -1,0 +1,40 @@
+{
+  "name": "error-handling-debugging",
+  "version": "2.0.0",
+  "description": "错误处理和调试，包括 Rust/TypeScript 错误处理、Tauri 命令失败排查等",
+  "triggers": {
+    "keywords": [
+      "处理错误",
+      "error handling",
+      "错误处理",
+      "捕获异常",
+      "exception",
+      "错误恢复",
+      "error recovery",
+      "异常处理"
+    ],
+    "filePatterns": [
+      "**/*.rs",
+      "**/*.ts",
+      "**/*.tsx"
+    ],
+    "contexts": [
+      "处理错误",
+      "错误恢复",
+      "异常处理",
+      "Tauri 命令失败"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["error-handling", "debugging", "troubleshooting", "recovery"],
+  "relatedSkills": [
+    "debugging",
+    "tauri-development"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md"
+  ]
+}

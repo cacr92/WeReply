@@ -1,0 +1,53 @@
+{
+  "name": "testing-strategy",
+  "version": "2.0.0",
+  "description": "测试策略和实践，包括单元测试、集成测试、TDD、测试覆盖率等",
+  "triggers": {
+    "keywords": [
+      "测试",
+      "test",
+      "单元测试",
+      "unit test",
+      "集成测试",
+      "integration test",
+      "TDD",
+      "测试驱动",
+      "test-driven",
+      "覆盖率",
+      "coverage",
+      "编写测试",
+      "创建测试用例",
+      "添加单元测试",
+      "添加集成测试",
+      "测试覆盖率",
+      "模拟命令",
+      "测试夹具"
+    ],
+    "filePatterns": [
+      "**/*test.rs",
+      "**/*_test.rs",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/tests/**/*.rs"
+    ],
+    "contexts": [
+      "编写测试",
+      "创建测试用例",
+      "TDD 工作流",
+      "测试覆盖率"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "quality",
+  "tags": ["testing", "tdd", "unit-test", "integration-test", "coverage"],
+  "relatedSkills": [
+    "tdd-workflow",
+    "debugging"
+  ],
+  "relatedRules": [
+    "07-testing-standards.md"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "project-overview",
+  "version": "1.0.0",
+  "description": "CaCrFeedFormula 项目背景知识，自动加载，不可手动调用",
+  "triggers": {
+    "keywords": [],
+    "filePatterns": [],
+    "contexts": []
+  },
+  "priority": "high",
+  "autoLoad": true,
+  "userInvocable": false,
+  "category": "background",
+  "tags": ["project", "overview", "context", "background"],
+  "relatedSkills": [],
+  "relatedRules": [
+    "01-project-overview.md"
+  ]
+}

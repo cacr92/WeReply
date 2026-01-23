@@ -1,0 +1,160 @@
+{
+  "hooks": [
+    {
+      "name": "pre-bash-git-commit-block",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Bash",
+        "args": "git\\s+commit"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 禁止直接使用 git commit 命令！\n\n你必须使用完整的 13 步开发流程：\n\n正确做法：\n1. 先调用 Skill(skill: \"using-git-worktrees\") 创建 feature 分支\n2. 完成开发和所有检查后\n3. 调用 Skill(skill: \"commit\") 自动生成提交信息并提交\n\n❌ 错误：git commit -m \"...\"\n✅ 正确：Skill(skill: \"commit\")\n\n参考：.claude/CLAUDE.md 完整开发闭环流程（13 步）"
+      }
+    },
+    {
+      "name": "pre-bash-git-checkout-main-block",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Bash",
+        "args": "git\\s+checkout\\s+(main|master)"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 禁止切换到 main/master 分支进行开发！\n\n你必须在 feature/fix 分支上工作。\n\n正确做法：\n1. 调用 Skill(skill: \"using-git-worktrees\") 创建新分支\n2. 在 feature 分支上进行所有开发工作\n3. 完成后由用户决定何时合并到 main\n\n❌ 禁止：在 main 分支上直接修改代码\n✅ 正确：始终在 feature/fix 分支上工作"
+      }
+    },
+    {
+      "name": "pre-bash-git-push-force-block",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Bash",
+        "args": "git\\s+push.*(-f|--force)"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 禁止使用 git push --force！\n\n强制推送会破坏 Git 历史，可能导致代码丢失。\n\n如果确实需要修改历史：\n1. 请先咨询用户\n2. 确保用户了解风险\n3. 由用户自行执行 force push"
+      }
+    },
+    {
+      "name": "pre-bash-git-dangerous-commands-block",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Bash",
+        "args": "git\\s+(reset\\s+--hard|clean\\s+-fd)"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 检测到危险的 Git 命令！\n\n以下命令可能导致代码丢失：\n- git reset --hard\n- git clean -fd\n\n如果确实需要清理工作区：\n1. 先询问用户\n2. 确保用户已备份重要更改\n3. 由用户自行执行命令"
+      }
+    },
+    {
+      "name": "pre-edit-write-source-code-workflow-reminder",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "src/.*\\.(rs|tsx?|vue)$|frontend/src/.*\\.(tsx?|vue)$"
+      },
+      "action": {
+        "type": "warn",
+        "message": "⚠️ 即将修改源代码文件！\n\n请确认你已经执行了完整的 13 步开发流程：\n\n✅ 步骤 1: 已调用 Skill(skill: \"using-git-worktrees\") 创建 feature 分支\n✅ 步骤 2: 已调用 Skill(skill: \"brainstorming\") 或 Skill(skill: \"systematic-debugging\")\n✅ 步骤 3: 已调用 Skill(skill: \"writing-plans\")\n✅ 步骤 4: 已调用项目特定 skills\n✅ 步骤 5: 已调用 Skill(skill: \"test-driven-development\")\n\n如果你还没有创建 feature 分支，请立即：\n1. 停止当前操作\n2. 调用 Skill(skill: \"using-git-worktrees\")\n3. 然后再继续修改代码\n\n参考：.claude/CLAUDE.md 完整开发闭环流程"
+      }
+    },
+    {
+      "name": "pre-bash-dangerous-rm-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Bash",
+        "args": "rm\\s+-rf\\s+/"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 检测到极度危险的命令！\n\nrm -rf / 会删除整个文件系统！\n\n这个命令已被阻止执行。"
+      }
+    },
+    {
+      "name": "pre-tool-use-console-log-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "console\\.(log|error|warn|info|debug)"
+      },
+      "action": {
+        "type": "block",
+        "message": "⚠️ 检测到 console.log/error/warn！\n\n桌面应用禁止使用 console，请使用：\n- 前端：message.error/success/warning (Ant Design)\n- 后端：tracing::info/error/warn (Rust)\n\n如果这是测试代码或调试代码，请在完成后删除。"
+      }
+    },
+    {
+      "name": "pre-tool-use-as-any-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "as any"
+      },
+      "action": {
+        "type": "block",
+        "message": "⚠️ 检测到 'as any' 类型转换！\n\n禁止使用 'as any'，请使用：\n- 精确的类型断言 (as SpecificType)\n- 类型守卫函数\n- unknown 类型（如果类型确实未知）\n\n参考：.claude/rules/03-react-frontend-standards.md"
+      }
+    },
+    {
+      "name": "pre-tool-use-sql-injection-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "format!\\(.*SELECT.*FROM"
+      },
+      "action": {
+        "type": "warn",
+        "message": "⚠️ 检测到可能的 SQL 字符串拼接！\n\n请确保使用 SQLx 参数化查询：\n- 使用 sqlx::query_as! 宏\n- 使用 QueryBuilder 的 push_bind 方法\n\n参考：.claude/rules/06-security-standards.md"
+      }
+    },
+    {
+      "name": "pre-tool-use-unsafe-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "unsafe\\s*\\{"
+      },
+      "action": {
+        "type": "warn",
+        "message": "⚠️ 检测到 unsafe 代码块！\n\n除非绝对必要，否则避免使用 unsafe。\n\n可接受的使用场景：\n- FFI 调用\n- 性能关键路径（经过充分测试）\n- 与 C 库交互\n\n请确保：\n1. 有充分的理由使用 unsafe\n2. 添加详细的安全性注释\n3. 进行充分的测试"
+      }
+    },
+    {
+      "name": "pre-tool-use-hardcoded-key-check",
+      "type": "PreToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "(API_KEY|api_key|apiKey)\\s*=\\s*[\"']sk-|[\"']Bearer\\s"
+      },
+      "action": {
+        "type": "block",
+        "message": "🚨 检测到可能的硬编码 API 密钥！\n\n严禁硬编码密钥，必须使用环境变量：\n\nRust:\nlet api_key = env::var(\"API_KEY\")?;\n\nTypeScript:\nconst apiKey = import.meta.env.VITE_API_KEY;\n\n参考：.claude/rules/06-security-standards.md"
+      }
+    },
+    {
+      "name": "post-tool-use-changelog-reminder",
+      "type": "PostToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "src/.*\\.(rs|tsx?|vue)$"
+      },
+      "action": {
+        "type": "remind",
+        "message": "📝 提醒：修改代码后记得更新 CHANGELOG.md\n\n在完成所有修改后，将调用 Skill(skill: \"changelog-generator\") 自动更新 CHANGELOG.md。"
+      }
+    },
+    {
+      "name": "post-tool-use-test-reminder",
+      "type": "PostToolUse",
+      "matcher": {
+        "tool": "Edit|Write",
+        "args": "src/.*/service\\.rs$|src/.*/repository\\.rs$"
+      },
+      "action": {
+        "type": "remind",
+        "message": "🧪 提醒：修改核心业务逻辑后记得添加/更新测试\n\n步骤 5 会调用 Skill(skill: \"test-driven-development\") 确保测试覆盖。\n\n测试要求：\n- 添加或更新单元测试\n- 添加或更新集成测试\n- 测试覆盖率 >= 80%\n\n参考：.claude/rules/07-testing-standards.md"
+      }
+    }
+  ]
+}

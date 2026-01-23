@@ -1,0 +1,158 @@
+{
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat <<'EOF'\n=========================================\n🦀 饲料配方系统 - Tauri + Rust + React\n=========================================\n\n📋 开发规范提醒：\n  ❌ 禁止 console.log - 使用 message 组件\n  ❌ 禁止 as any - 使用精确类型断言\n  ✅ 修改代码后更新 CHANGELOG.md\n  ✅ Rust 修改后会自动生成类型绑定\n\n⚠️ AI 执行流程规范（强制遵守）：\n  1️⃣ 需求分析 - 按序号列出（1. 2. 3. ...）\n  2️⃣ 任务分解 - 带任务编号（任务1、1.1、1.2...）\n  3️⃣ 创建TodoWrite - 立即创建任务追踪清单\n  4️⃣ 说明每一步 - 执行前必须说明在做什么\n  5️⃣ 标记完成状态 - 逐项标记 ✓已完成/✗未完成\n  6️⃣ 逻辑验证 - 检查逻辑和数据流\n  7️⃣ 代码审查 - 运行lint检查\n\n❗ 如果AI偏离以上流程，请立即打断！\n=========================================\nEOF"
+          },
+          {
+            "type": "command",
+            "command": "echo \"\n当前分支: $(git branch --show-current)\nGit 状态: $(git status --short | wc -l | tr -d ' ') 个变更\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 💬 开始处理请求..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; case \"$file_path\" in *.env|*.db|*.sqlite|*.key|*.pem|*.p12|*package-lock.json|*Cargo.lock|*.git/*) echo '🚫 禁止修改敏感文件'; exit 2 ;; esac; }"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | { read cmd; case \"$cmd\" in *\"rm -rf\"*|*\"del /s\"*|*format*|*shutdown*|*reboot*) echo '🚫 禁止执行危险命令'; exit 2 ;; esac; }"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write.*\\.rs$|Edit.*\\.rs$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 🔍 Rust 代码规范检查..."
+          },
+          {
+            "type": "command",
+            "command": "cargo clippy --quiet 2>&1 | grep -E 'warning|error' | head -n 10 || echo ✅ Clippy检查通过",
+            "timeout": 45
+          },
+          {
+            "type": "command",
+            "command": "echo 🔄 更新类型绑定..."
+          },
+          {
+            "type": "command",
+            "command": "cargo run --bin generate_bindings --quiet 2>&1 || echo ⚠️ 类型绑定生成失败，请手动运行 cargo run --bin generate_bindings",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "echo ✅ Rust 文件处理完成"
+          }
+        ]
+      },
+      {
+        "matcher": "Write.*frontend.*\\.(ts|tsx)$|Edit.*frontend.*\\.(ts|tsx)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 🔍 TypeScript 代码规范检查..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; grep -n 'console\\.\\(log\\|error\\|warn\\)' \"$file_path\" 2>/dev/null && echo '⚠️ 检测到 console 日志！请使用 message 组件'; grep -n 'as any' \"$file_path\" 2>/dev/null && echo '⚠️ 检测到 as any！请使用精确类型'; true; }"
+          },
+          {
+            "type": "command",
+            "command": "cd frontend && npx tsc --noEmit --pretty 2>&1 | head -n 20 || echo ✅ TypeScript类型检查通过",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "cd frontend && npm run lint --silent 2>&1 | head -n 10 || echo ✅ ESLint检查通过",
+            "timeout": 25
+          },
+          {
+            "type": "command",
+            "command": "echo ✅ TypeScript 文件处理完成"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 📝 记得更新 CHANGELOG.md"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat <<'EOF'\n\n=========================================\n✅ 任务完成\n\n📋 下一步检查清单：\n  □ 运行 cargo clippy 检查警告\n  □ 运行 npm run lint 检查错误\n  □ 更新 CHANGELOG.md\n  □ 测试功能是否正常\n  □ 提交代码前审查变更\n=========================================\nEOF"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat <<'EOF'\n📊 会话结束\n\n当前状态：\n  - 分支: $(git branch --show-current)\n  - 未提交变更: $(git status --short | wc -l | tr -d ' ') 个\n\n💡 离开前记得：\n  ✅ 确保所有 lint 检查通过\n  ✅ 更新 CHANGELOG.md 记录变更\n  ✅ 测试功能是否正常\n  ✅ 审查代码变更\nEOF"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$OSTYPE\" == \"darwin\"* ]]; then osascript -e 'display notification \"Claude Code 需要你的输入\" with title \"饲料配方系统\"'; elif [[ \"$OSTYPE\" == \"msys\" ]] || [[ \"$OSTYPE\" == \"win32\" ]]; then powershell.exe -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('Claude Code 需要你的输入', '饲料配方系统', 'OK', 'Information')\"; else notify-send '饲料配方系统' 'Claude Code 需要你的输入'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

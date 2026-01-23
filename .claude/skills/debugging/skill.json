@@ -1,0 +1,47 @@
+{
+  "name": "debugging",
+  "version": "1.0.0",
+  "description": "调试和问题排查，包括错误诊断、性能分析、日志分析等",
+  "triggers": {
+    "keywords": [
+      "调试",
+      "debug",
+      "错误",
+      "error",
+      "bug",
+      "问题",
+      "issue",
+      "崩溃",
+      "crash",
+      "不工作",
+      "not working",
+      "失败",
+      "failed",
+      "排查",
+      "troubleshoot"
+    ],
+    "filePatterns": [
+      "**/*.rs",
+      "**/*.ts",
+      "**/*.tsx"
+    ],
+    "contexts": [
+      "修复bug",
+      "排查问题",
+      "调试错误",
+      "性能问题"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["debugging", "troubleshooting", "error-handling", "diagnostics"],
+  "relatedSkills": [
+    "error-handling-debugging",
+    "code-review"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md"
+  ]
+}

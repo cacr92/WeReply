@@ -1,0 +1,49 @@
+{
+  "name": "tauri-development",
+  "version": "4.0.0",
+  "description": "Tauri 桌面应用开发，包括命令创建、类型绑定、前后端通信等",
+  "triggers": {
+    "keywords": [
+      "Tauri",
+      "命令",
+      "command",
+      "invoke",
+      "specta",
+      "类型绑定",
+      "bindings",
+      "桌面应用",
+      "desktop",
+      "创建 Tauri 命令",
+      "添加后端命令",
+      "集成 Rust 和 React",
+      "设置 specta 类型",
+      "从前端调用 Tauri",
+      "前后端类型不一致",
+      "更新 bindings.ts",
+      "跨平台桌面开发"
+    ],
+    "filePatterns": [
+      "src/**/commands.rs",
+      "src/**/mod.rs",
+      "frontend/src/bindings.ts"
+    ],
+    "contexts": [
+      "添加Tauri命令",
+      "修改命令",
+      "更新类型绑定",
+      "前后端通信"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["tauri", "desktop", "commands", "specta", "type-binding"],
+  "relatedSkills": [
+    "rust-optimization",
+    "react-typescript-development"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md"
+  ]
+}

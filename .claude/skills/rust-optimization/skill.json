@@ -1,0 +1,45 @@
+{
+  "name": "rust-optimization",
+  "version": "1.0.0",
+  "description": "Rust 代码性能优化指导，包括并行计算、缓存策略、内存优化等",
+  "triggers": {
+    "keywords": [
+      "优化",
+      "optimization",
+      "性能",
+      "performance",
+      "慢",
+      "slow",
+      "并行",
+      "parallel",
+      "缓存",
+      "cache",
+      "rayon",
+      "moka"
+    ],
+    "filePatterns": [
+      "**/service.rs",
+      "**/repository.rs",
+      "src/formula/**/*.rs",
+      "src/optimization/**/*.rs"
+    ],
+    "contexts": [
+      "性能优化",
+      "提高速度",
+      "减少内存使用",
+      "并行计算"
+    ]
+  },
+  "priority": "medium",
+  "autoLoad": false,
+  "category": "optimization",
+  "tags": ["rust", "performance", "optimization", "parallel", "cache"],
+  "relatedSkills": [
+    "sqlite-optimization",
+    "formula-calculation"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "08-performance-standards.md"
+  ]
+}

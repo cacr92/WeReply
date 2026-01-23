@@ -1,0 +1,57 @@
+{
+  "name": "react-typescript-development",
+  "version": "3.0.0",
+  "description": "React TypeScript 前端开发，包括组件开发、Hooks、状态管理、性能���化等",
+  "triggers": {
+    "keywords": [
+      "组件",
+      "component",
+      "React",
+      "前端",
+      "frontend",
+      "UI",
+      "界面",
+      "页面",
+      "page",
+      "hooks",
+      "useState",
+      "useEffect",
+      "开发 React 组件",
+      "编写前端代码",
+      "创建界面",
+      "实现状态管理",
+      "前端开发",
+      "TanStack Query",
+      "Ant Design",
+      "Hooks 优化",
+      "类型安全",
+      "避免 as any",
+      "TypeScript"
+    ],
+    "filePatterns": [
+      "frontend/**/*.tsx",
+      "frontend/**/*.ts",
+      "frontend/src/components/**/*",
+      "frontend/src/pages/**/*"
+    ],
+    "contexts": [
+      "创建组件",
+      "修改界面",
+      "添加页面",
+      "状态管理",
+      "前端开发"
+    ]
+  },
+  "priority": "high",
+  "autoLoad": false,
+  "category": "development",
+  "tags": ["react", "typescript", "frontend", "hooks", "ant-design", "performance"],
+  "relatedSkills": [
+    "tauri-development",
+    "testing-strategy"
+  ],
+  "relatedRules": [
+    "03-react-frontend-standards.md",
+    "08-performance-standards.md"
+  ]
+}

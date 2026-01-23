@@ -1,0 +1,51 @@
+{
+  "name": "api-design",
+  "version": "2.0.0",
+  "description": "API 设计和数据结构定义，包括 Tauri 命令 API、DTO 创建、类型安全等",
+  "triggers": {
+    "keywords": [
+      "设计API",
+      "API",
+      "接口",
+      "interface",
+      "DTO",
+      "数据传输",
+      "data transfer",
+      "请求",
+      "request",
+      "响应",
+      "response",
+      "创建DTO",
+      "定义数据结构",
+      "API文档",
+      "请求响应格式",
+      "数据传输对象",
+      "契约"
+    ],
+    "filePatterns": [
+      "**/dto.rs",
+      "**/api/**/*.rs",
+      "**/commands.rs",
+      "src/**/mod.rs"
+    ],
+    "contexts": [
+      "设计API",
+      "创建DTO",
+      "定义接口",
+      "API 文档",
+      "类型安全"
+    ]
+  },
+  "priority": "medium",
+  "autoLoad": false,
+  "category": "design",
+  "tags": ["api", "dto", "design", "type-safety", "tauri-commands"],
+  "relatedSkills": [
+    "tauri-development",
+    "rust-optimization"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md"
+  ]
+}

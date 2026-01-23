@@ -1,0 +1,47 @@
+{
+  "name": "refactoring",
+  "version": "2.0.0",
+  "description": "代码重构指导，包括提取方法、消除重复、简化逻辑、改进设计等",
+  "triggers": {
+    "keywords": [
+      "重构",
+      "refactor",
+      "重构代码",
+      "改进代码结构",
+      "清理代码",
+      "降低复杂度",
+      "提取方法",
+      "代码异味",
+      "code smell",
+      "技术债",
+      "technical debt",
+      "遗留代码",
+      "legacy code",
+      "改进",
+      "improve"
+    ],
+    "filePatterns": [
+      "**/*.rs",
+      "**/*.ts",
+      "**/*.tsx"
+    ],
+    "contexts": [
+      "重构代码",
+      "改进结构",
+      "清理代码",
+      "降低复杂度"
+    ]
+  },
+  "priority": "medium",
+  "autoLoad": false,
+  "category": "quality",
+  "tags": ["refactoring", "code-quality", "maintainability", "design-patterns"],
+  "relatedSkills": [
+    "code-review",
+    "rust-optimization"
+  ],
+  "relatedRules": [
+    "02-rust-backend-standards.md",
+    "03-react-frontend-standards.md"
+  ]
+}
