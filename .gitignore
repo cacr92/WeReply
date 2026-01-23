@@ -1,0 +1,23 @@
+# Node
+node_modules/
+dist/
+pnpm-lock.yaml
+npm-debug.log
+
+# Rust/Tauri
+target/
+src-tauri/target/
+*.rs.bk
+
+# Python
+__pycache__/
+.venv/
+.env
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Worktrees
+.worktrees/
