@@ -230,6 +230,29 @@ html[data-theme="dark"] .suggestion {
   color: inherit;
 }
 
+.diagnostics {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.diagnostics p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.diagnostics ul {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .model-select {
   display: grid;
   gap: 8px;

@@ -2,10 +2,17 @@ import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { message, Modal } from "antd";
 import "./App.css";
-import type { ErrorPayload, Status, Suggestion, SuggestionsUpdated } from "./bindings";
+import type {
+  DeepseekDiagnostics,
+  ErrorPayload,
+  Status,
+  Suggestion,
+  SuggestionsUpdated,
+} from "./bindings";
 import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
 import { getApiKeyStatusLabel, resolveApiKeySaveOutcome } from "./utils/apiKey";
+import { summarizeDiagnostics } from "./utils/diagnostics";
 import { getStyleLabel } from "./utils/labels";
 import {
   DEFAULT_MODELS,
@@ -33,6 +40,9 @@ function App() {
   const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0]);
   const [modelLoading, setModelLoading] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<DeepseekDiagnostics | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const diagnosticsSummary = diagnostics ? summarizeDiagnostics(diagnostics) : null;
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -193,10 +203,39 @@ function App() {
       message.success("API 密钥已删除");
       setApiKeySet(false);
       setApiKeyStatus("idle");
+      setDiagnostics(null);
     } else {
       message.error(res.message || "删除失败");
     }
   }, []);
+
+  const handleDiagnose = useCallback(async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed && !apiKeySet) {
+      message.warning("请先输入或保存 API 密钥");
+      return;
+    }
+    setDiagnosing(true);
+    try {
+      const res = await commands.diagnoseDeepseek(trimmed || undefined);
+      if (res.success && res.data) {
+        setDiagnostics(res.data);
+        const summary = summarizeDiagnostics(res.data);
+        if (summary.ok) {
+          message.success(summary.message);
+        } else {
+          message.error(summary.message);
+        }
+      } else {
+        message.error(res.message || "连接诊断失败");
+      }
+    } catch (err) {
+      const fallback = err instanceof Error ? err.message : "连接诊断失败";
+      message.error(fallback);
+    } finally {
+      setDiagnosing(false);
+    }
+  }, [apiKeyInput, apiKeySet]);
 
   const handleModelChange = useCallback(
     async (event: ChangeEvent<HTMLSelectElement>) => {
@@ -303,10 +342,25 @@ function App() {
             <button onClick={handleSaveApiKey} disabled={apiKeyStatus === "connecting"}>
               保存并连接
             </button>
+            <button className="ghost" onClick={handleDiagnose} disabled={diagnosing}>
+              {diagnosing ? "诊断中..." : "连接诊断"}
+            </button>
             {apiKeySet ? (
               <button className="ghost" onClick={handleDeleteApiKey}>
                 删除密钥
               </button>
+            ) : null}
+            {diagnosticsSummary ? (
+              <div className="diagnostics">
+                <p>{diagnosticsSummary.message}</p>
+                <ul>
+                  <li>Base URL：{diagnostics?.base_url}</li>
+                  <li>模型：{diagnostics?.model}</li>
+                  {diagnosticsSummary.lines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
         </div>
