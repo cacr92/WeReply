@@ -8,7 +8,7 @@ mod state;
 mod types;
 
 use crate::agent::start_agent;
-use crate::config::{load_config, save_config, validate_config};
+use crate::config::load_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
 use crate::ipc::InputWritePayload;
@@ -30,22 +30,11 @@ async fn get_config(state: State<'_, SharedState>) -> Result<ApiResponse<Config>
 #[tauri::command]
 #[specta::specta]
 async fn set_config(
-    app: AppHandle,
-    state: State<'_, SharedState>,
-    config: Config,
+    _app: AppHandle,
+    _state: State<'_, SharedState>,
+    _config: Config,
 ) -> Result<ApiResponse<()>, String> {
-    if let Err(err) = validate_config(&config) {
-        return Ok(api_err(err.to_string()));
-    }
-    if let Err(err) = save_config(&app, &config) {
-        return Ok(api_err(err.to_string()));
-    }
-    {
-        let mut guard = state.lock().await;
-        guard.config = config.clone();
-    }
-    let _ = app.emit("config.updated", config);
-    Ok(api_ok(()))
+    Ok(api_err("配置已固定为默认值"))
 }
 
 #[tauri::command]
@@ -149,11 +138,25 @@ async fn write_suggestion(
 
 #[tauri::command]
 #[specta::specta]
-async fn save_api_key(api_key: String) -> Result<ApiResponse<()>, String> {
-    Ok(match ApiKeyManager::set_deepseek_api_key(&api_key) {
-        Ok(()) => api_ok(()),
-        Err(err) => api_err(err.to_string()),
-    })
+async fn save_api_key(
+    state: State<'_, SharedState>,
+    api_key: String,
+) -> Result<ApiResponse<()>, String> {
+    if let Err(err) = ApiKeyManager::set_deepseek_api_key(&api_key) {
+        return Ok(api_err(err.to_string()));
+    }
+
+    let config = {
+        let guard = state.lock().await;
+        guard.config.clone()
+    };
+    match deepseek::validate_api_key(&config, &api_key).await {
+        Ok(()) => Ok(api_ok(())),
+        Err(err) => {
+            let _ = ApiKeyManager::delete_deepseek_api_key();
+            Ok(api_err(err.to_string()))
+        }
+    }
 }
 
 #[tauri::command]

@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 const SYSTEM_PROMPT: &str = "你是回复建议助手。请根据对话内容生成 3 条回复建议，分别为正式、\
 中性、轻松风格。返回 JSON 数组，每个元素包含 style(formal|neutral|casual) 与 text。";
+const VALIDATION_PROMPT: &str = "请回复一个简短确认词，用于验证连接。";
 
 pub fn build_request(
     user_input: &str,
@@ -27,6 +28,47 @@ pub fn build_request(
         "n": suggestion_count,
         "stream": false
     })
+}
+
+pub fn build_validation_request(user_input: &str, model: &str) -> Value {
+    json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": VALIDATION_PROMPT},
+            {"role": "user", "content": user_input}
+        ],
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "n": 1,
+        "stream": false
+    })
+}
+
+pub async fn validate_api_key(config: &Config, api_key: &str) -> Result<()> {
+    let client = Client::builder()
+        .timeout(Duration::from_millis(config.timeout_ms.min(8_000)))
+        .build()
+        .context("创建 HTTP 客户端失败")?;
+    let url = format!(
+        "{}/v1/chat/completions",
+        config.base_url.trim_end_matches('/')
+    );
+    let request = build_validation_request("ping", &config.deepseek_model);
+
+    let response = client
+        .post(url)
+        .bearer_auth(api_key)
+        .json(&request)
+        .send()
+        .await
+        .context("DeepSeek 连接失败")?;
+    let status = response.status();
+    let raw = response.text().await.context("读取 DeepSeek 响应失败")?;
+    if !status.is_success() {
+        let detail: String = raw.chars().take(200).collect();
+        anyhow::bail!("DeepSeek 验证失败: {} {}", status, detail);
+    }
+    Ok(())
 }
 
 pub async fn generate_suggestions(
@@ -189,5 +231,12 @@ mod tests {
     fn fallback_has_three_styles() {
         let suggestions = fallback_suggestions("hi");
         assert_eq!(suggestions.len(), 3);
+    }
+
+    #[test]
+    fn build_validation_request_is_minimal() {
+        let req = build_validation_request("ping", "deepseek-chat");
+        assert_eq!(req["n"], 1);
+        assert_eq!(req["temperature"], 0.0);
     }
 }
