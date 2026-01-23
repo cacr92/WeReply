@@ -12,3 +12,4 @@
 - 保存 API Key 时进行 DeepSeek 连接验证，失败自动清理。
 - 新增监听控制 IPC，完善 Windows/macOS Agent 的监听与输入写入实现。
 - 修复 macOS Agent 依赖导入，确保可访问 Accessibility API。
+- 增加规则：每次完成代码修改后同步到主目录供验证。
