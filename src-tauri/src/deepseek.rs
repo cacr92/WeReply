@@ -12,12 +12,13 @@ const VALIDATION_PROMPT: &str = "请回复一个简短确认词，用于验证�
 const DEFAULT_MODELS: [&str; 2] = ["deepseek-chat", "deepseek-reasoner"];
 
 fn cap_timeout_ms(timeout_ms: u64) -> u64 {
-    timeout_ms.clamp(2_000, 8_000)
+    timeout_ms.clamp(2_000, 12_000)
 }
 
 pub fn build_request(user_input: &str, model: &str) -> Value {
     json!({
         "model": model,
+        "stream": false,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_input}
@@ -28,6 +29,7 @@ pub fn build_request(user_input: &str, model: &str) -> Value {
 pub fn build_validation_request(user_input: &str, model: &str) -> Value {
     json!({
         "model": model,
+        "stream": false,
         "messages": [
             {"role": "system", "content": VALIDATION_PROMPT},
             {"role": "user", "content": user_input}
@@ -282,6 +284,7 @@ mod tests {
         let req = build_request("hi", "deepseek-chat");
         assert_eq!(req["model"], "deepseek-chat");
         assert_eq!(req["messages"].as_array().unwrap().len(), 2);
+        assert_eq!(req["stream"], false);
         assert!(req.get("temperature").is_none());
         assert!(req.get("top_p").is_none());
         assert!(req.get("n").is_none());
@@ -297,6 +300,7 @@ mod tests {
     fn build_validation_request_is_minimal() {
         let req = build_validation_request("ping", "deepseek-chat");
         assert_eq!(req["model"], "deepseek-chat");
+        assert_eq!(req["stream"], false);
         assert!(req.get("temperature").is_none());
         assert!(req.get("top_p").is_none());
         assert!(req.get("n").is_none());
@@ -304,7 +308,7 @@ mod tests {
 
     #[test]
     fn normalize_timeout_caps() {
-        assert_eq!(cap_timeout_ms(12_000), 8_000);
+        assert_eq!(cap_timeout_ms(20_000), 12_000);
     }
 
     #[test]
