@@ -5,7 +5,7 @@ import "./App.css";
 import type { ErrorPayload, Status, Suggestion, SuggestionsUpdated } from "./bindings";
 import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
-import { getApiKeyStatusLabel } from "./utils/apiKey";
+import { getApiKeyStatusLabel, resolveApiKeySaveOutcome } from "./utils/apiKey";
 import { getStateLabel, getStyleLabel } from "./utils/labels";
 
 const DEFAULT_STATUS: Status = {
@@ -147,16 +147,24 @@ function App() {
       return;
     }
     setApiKeyStatus("connecting");
-    const res = await commands.saveApiKey(apiKeyInput.trim());
-    if (res.success) {
-      message.success("API 密钥已保存并连接成功");
-      setApiKeyInput("");
-      setApiKeySet(true);
-      setApiKeyStatus("connected");
-    } else {
-      message.error(res.message || "连接失败");
-      setApiKeySet(false);
-      setApiKeyStatus("failed");
+    try {
+      const res = await commands.saveApiKey(apiKeyInput.trim());
+      const outcome = resolveApiKeySaveOutcome(res);
+      setApiKeyStatus(outcome.status);
+      setApiKeySet(outcome.apiKeySet);
+      if (outcome.clearInput) {
+        setApiKeyInput("");
+      }
+      if (outcome.status === "connected") {
+        message.success(outcome.message);
+      } else {
+        message.error(outcome.message);
+      }
+    } catch (err) {
+      const outcome = resolveApiKeySaveOutcome(null, err);
+      setApiKeyStatus(outcome.status);
+      setApiKeySet(outcome.apiKeySet);
+      message.error(outcome.message);
     }
   }, [apiKeyInput]);
 
