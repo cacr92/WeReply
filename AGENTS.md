@@ -44,9 +44,15 @@
 
 - ✅ **Plan-First Workflow** - 先计划后编码（复杂任务）
 - ✅ **使用 feature 分支开发** - 永不直接修改 main 分支
+- ✅ **执行 SKILL.md 流程** - 读取 `.codex/skills/` 目录下的 SKILL.md 文件并按照其定义的流程执行
 - ✅ **灵活执行** - 简单任务可跳过部分步骤
 - ✅ **TDD 优先** - 先写测试后写代码
 - ✅ **质量保障** - 完成前必须验证
+
+**重要提醒**: Codex 没有直接调用 skills 的功能，但必须在每个步骤中：
+1. 读取对应的 `.codex/skills/xxx/SKILL.md` 文件
+2. 理解 SKILL.md 中定义的流程和要求
+3. 严格按照 SKILL.md 的指引执行该步骤
 
 ---
 
@@ -55,6 +61,12 @@
 #### 步骤 1：需求分析
 
 **触发时机**: 新功能、复杂任务、不清楚的需求
+
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/brainstorming/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的流程执行需求分析
+```
 
 **作用**:
 - 探索用户意图和需求
@@ -73,6 +85,12 @@
 #### 步骤 2：编写实现计划
 
 **触发时机**: 复杂功能、重构任务、跨模块修改
+
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/writing-plans/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的流程生成实施计划
+```
 
 **作用**:
 - 生成详细的实施计划
@@ -120,6 +138,12 @@ git checkout -b fix/bug-description
 
 **所有新功能和 bug 修复都必须执行**
 
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/tdd-workflow/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的 TDD 流程执行开发
+```
+
 **TDD 流程**:
 1. **编写测试** - 先写失败的测试
 2. **实现代码** - 编写最小可用代码
@@ -145,11 +169,35 @@ git checkout -b fix/bug-description
 
 ---
 
+#### 步骤 4.5：项目特定技术栈检查（自动识别）
+
+**根据修改的文件路径，自动读取并执行对应的项目特定 SKILL.md**:
+
+| 文件特征 | 执行流程 | 用途 |
+|---------|---------|------|
+| `src/wechat/**/*.rs` | 读取并执行 `.codex/skills/wechat-automation/SKILL.md` | 微信监听与自动化规范 |
+| `src/ai/**/*.rs` | 读取并执行 `.codex/skills/deepseek-integration/SKILL.md` | DeepSeek API 集成规范 |
+| `src/orchestrator/**/*.rs` | 读取并执行 `.codex/skills/ipc-communication/SKILL.md` | IPC 通信协议规范 |
+| `platform_agents/**/*.py` | 读取并执行 `.codex/skills/python-agent-development/SKILL.md` | Python Agent 开发规范 |
+| `platform_agents/**/*.swift` | 读取并执行 `.codex/skills/macos-agent-development/SKILL.md` | macOS Agent 开发规范 |
+| `frontend/src/**/*.tsx` | 读取并执行 `.codex/skills/react-typescript-development/SKILL.md` | React TypeScript 规范 |
+| `src/**/commands.rs` | 读取并执行 `.codex/skills/tauri-development/SKILL.md` | Tauri 命令规范 |
+| `src/**/*.rs`（其他） | 读取并执行 `.codex/skills/rust-optimization/SKILL.md` | Rust 性能优化 |
+| 任何 API 设计 | 读取并执行 `.codex/skills/api-design/SKILL.md` | API 设计规范 |
+
+---
+
 ### 阶段 3：质量保障
 
 #### 步骤 5：验证完成（强制执行）
 
 **所有代码任务都必须执行**
+
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/verification-before-completion/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的验证流程检查代码质量
+```
 
 **验证清单**:
 
@@ -190,6 +238,12 @@ git checkout -b fix/bug-description
 
 **所有代码任务都必须执行**
 
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/finishing-a-development-branch/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的流程完成分支工作
+```
+
 **提供选项**:
 1. **创建 Pull Request** - 团队协作、需要审查
 2. **直接合并到 main** - 个人项目、紧急修复
@@ -214,6 +268,12 @@ chore: 更新依赖版本
 
 **触发时机**: Bug 修复、异常排查
 
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/systematic-debugging/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的调试流程排查问题
+```
+
 **调试流程**:
 1. **重现问题** - 创建可复现的测试用例
 2. **诊断原因** - 使用日志、断点分析
@@ -231,6 +291,12 @@ chore: 更新依赖版本
 #### 可选 B：代码审查（重大功能时）
 
 **触发时机**: 重大功能、重构、安全关键代码
+
+**执行流程**:
+```bash
+1. 读取 `.codex/skills/code-review/SKILL.md` 文件
+2. 按照 SKILL.md 中定义的审查流程进行代码审查
+```
 
 **审查重点**:
 - 架构设计是否合理（Orchestrator ↔ Agent ↔ DeepSeek）
