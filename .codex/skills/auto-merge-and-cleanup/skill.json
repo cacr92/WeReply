@@ -1,0 +1,36 @@
+{
+  "name": "auto-merge-and-cleanup",
+  "version": "1.0.0",
+  "description": "在13步开发流程完成后，自动合并分支到 main，同步远程代码，清理分支和临时文件",
+  "triggers": {
+    "keywords": [
+      "自动合并",
+      "清理分支",
+      "完成任务",
+      "合并到main",
+      "auto merge",
+      "cleanup",
+      "finish task",
+      "步骤14",
+      "step 14"
+    ],
+    "contexts": [
+      "步骤13完成后",
+      "finishing-a-development-branch 完成后",
+      "开发任务完成"
+    ]
+  },
+  "priority": "critical",
+  "autoLoad": true,
+  "category": "workflow",
+  "tags": ["git", "workflow", "automation", "cleanup", "merge"],
+  "relatedSkills": [
+    "using-git-worktrees",
+    "finishing-a-development-branch",
+    "changelog-generator"
+  ],
+  "executionOrder": "mandatory-after-step-13",
+  "relatedRules": [
+    "CLAUDE.md"
+  ]
+}

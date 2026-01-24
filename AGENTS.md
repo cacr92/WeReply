@@ -33,11 +33,11 @@
 
 ### 开发任务（代码修改、新功能、Bug修复）
 
-**必须执行"完整开发闭环流程（13步）"**，详见下方。
+**必须执行"完整开发闭环流程（14步）"**，详见下方。
 
 ---
 
-## 完整开发闭环流程（13步强制执行）
+## 完整开发闭环流程（14步强制执行）
 
 **核心原则**：
 
@@ -48,14 +48,14 @@
 
 ---
 
-### 13步开发流程
+### 14步开发流程
 
 #### 步骤 1：创建隔离分支（using-git-worktrees）
 
 **触发时机**：所有涉及代码修改的任务开始时
 
 ```bash
-执行 using-git-worktrees 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
+执行 using-git-worktrees 对应的 SKILL.md 流程
 ```
 
 #### 步骤 2：需求分析与设计（brainstorming）
@@ -63,7 +63,7 @@
 **触发条件**：新功能开发
 
 ```bash
-执行 brainstorming 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
+执行 brainstorming 对应的 SKILL.md 流程
 ```
 
 #### 步骤 3：编写实现计划（writing-plans）
@@ -71,7 +71,7 @@
 **触发条件**：复杂功能或重构任务
 
 ```bash
-执行 writing-plans 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
+执行 writing-plans 对应的 SKILL.md 流程
 ```
 
 #### 步骤 4：项目特定技术栈检查（自动识别）
@@ -80,17 +80,20 @@
 
 | 文件特征                        | 自动执行 Skill 流程              | 用途                  |
 | ------------------------------- | -------------------------------- | --------------------- |
-| `src/wechat/**/*.rs`          | `wechat-automation`            | 微信监听与自动化规范  |
-| `src/ai/**/*.rs`              | `deepseek-integration`         | DeepSeek API 集成规范 |
-| `frontend/src/**/*.tsx`       | `react-typescript-development` | React TypeScript 规范 |
-| `src/**/commands.rs`          | `tauri-development`            | Tauri 命令规范        |
-| `src/**/*.rs`（非 wechat/ai） | `rust-optimization`            | Rust 性能优化         |
-| 任何 API 设计                   | `api-design`                   | API 设计规范          |
+| `src/wechat/**/*.rs`         | `wechat-automation`            | 微信监听与自动化规范  |
+| `src/ai/**/*.rs`             | `deepseek-integration`         | DeepSeek API 集成规范 |
+| `src/orchestrator/**/*.rs`   | `ipc-communication`            | IPC 通信协议规范      |
+| `platform_agents/**/*.py`    | `python-agent-development`     | Python Agent 开发规范 |
+| `platform_agents/**/*.swift` | `macos-agent-development`      | macOS Agent 开发规范  |
+| `frontend/src/**/*.tsx`      | `react-typescript-development` | React TypeScript 规范 |
+| `src/**/commands.rs`         | `tauri-development`            | Tauri 命令规范        |
+| `src/**/*.rs`（其他）        | `rust-optimization`            | Rust 性能优化         |
+| 任何 API 设计                 | `api-design`                   | API 设计规范          |
 
 #### 步骤 5：TDD - 先写测试（test-driven-development）
 
 ```bash
-执行 test-driven-development 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
+执行 test-driven-development 对应的 SKILL.md 流程
 ```
 
 **要求**：先写失败的测试，确保测试覆盖率 ≥ 80%
@@ -105,22 +108,23 @@
 
 #### 步骤 7-10：质量保障流程
 
-7. **security-review** - 检查 SQL 注入、硬编码密钥、输入验证
+7. **security-review** - 检查 API 密钥管理、IPC 安全、输入验证、SQL 注入
 8. **check** - 运行 `cargo clippy` 和 `npm run lint`
 9. **optimize** - 分析性能瓶颈，提供优化建议
 10. **verification-before-completion** - 运行所有测试，验证覆盖率
 
-#### 步骤 11-13：提交和完成
+#### 步骤 11-14：提交和完成
 
 11. **changelog-generator** - 自动生成 CHANGELOG.md 条目
 12. **commit** - 生成规范的提交信息（Conventional Commits）
 13. **finishing-a-development-branch** - 提供 PR/合并/继续开发选项
+14. **auto-merge-and-cleanup** - 自动合并到 main，清理分支和临时文件（强制执行）
 
 ---
 
 ### 特殊流程
 
-**Bug 修复流程（11步）**：跳过步骤2和3，使用 `systematic-debugging` 流程替代（如可用则调用 Skill 工具）
+**Bug 修复流程（12步）**：跳过步骤2和3，使用 `systematic-debugging` 流程替代
 
 **多任务并行**：智能任务分解 + 最小化隔离
 
@@ -138,7 +142,7 @@
 
 ### 强制要求
 
-1. **必须执行 Skill 对应流程** - ✅ 读取并严格执行 `SKILL.md`；如工具可用则调用 `Skill(skill: "xxx")`
+1. **必须执行 Skill 对应流程** - ✅ 读取并严格执行 `SKILL.md`
 2. **不得跳过任何步骤** - 即使是简单任务也必须执行完整流程
 3. **分支保护** - 绝对禁止直接在 main 分支上修改代码
 4. **自动识别技术栈** - 分析文件路径，自动执行相应 skills 流程
@@ -153,8 +157,10 @@
 2. **禁止 `as any` 类型转换** → 使用精确类型断言或类型守卫
 3. **禁止原始 `invoke`** → 使用生成的 `commands`
 4. **禁止在循环中使用 Hooks**
-5. **禁止忘记提交事务**
-6. **禁止 `SELECT *`** → 明确指定需要的列
+5. **禁止硬编码 API 密钥** → 使用系统密钥链存储
+6. **禁止阻塞异步运行时** → 使用 `tokio::spawn` 或 `tokio::time::sleep`
+7. **禁止忘记提交事务**
+8. **禁止 `SELECT *`** → 明确指定需要的列
 
 ### 必须遵守
 
@@ -162,9 +168,11 @@
 2. **使用 `message` 组件** - 所有用户反馈通过 Ant Design `message` 组件
 3. **使用 tracing 日志** - 使用结构化日志记录
 4. **使用 `anyhow::Result + ApiResponse`** - 底层 anyhow，顶层 ApiResponse
-5. **使用 SQLx 编译时检查** - 使用 `sqlx::query_as!` 宏
-6. **使用事务处理复杂操作** - 复杂业务必须使用事务
-7. **主动使用 LSP 工具** - 修改代码前查看、评估影响、理解结构
+5. **使用 JSON 进行 IPC 通信** - Rust ↔ Agent 使用 JSON 协议
+6. **处理 Agent 异常** - 优雅处理 Agent 崩溃和超时
+7. **使用 SQLx 编译时检查** - 使用 `sqlx::query_as!` 宏
+8. **使用事务处理复杂操作** - 复杂业务必须使用事务
+9. **主动使用 LSP 工具** - 修改代码前查看、评估影响、理解结构
 
 ---
 
@@ -204,6 +212,7 @@
 - [ ] 所有 Tauri 命令有 `#[specta::specta]` 宏
 - [ ] 前端无 `console.log` 和 `as any`
 - [ ] 错误处理使用 `message` 组件
+- [ ] IPC 通信使用 JSON 协议
 - [ ] 数据库操作使用事务
 - [ ] React Hooks 遵循规则
 
@@ -211,6 +220,7 @@
 
 - [ ] 无硬编码密钥、密码、tokens
 - [ ] DeepSeek API 密钥使用系统密钥链存储
+- [ ] IPC 消息已验证（防止恶意 Agent）
 - [ ] SQL 查询使用参数化（`sqlx::query_as!`）
 - [ ] Tauri 命令参数已验证
 - [ ] 日志中无敏感信息（聊天内容、API 密钥）
@@ -219,6 +229,8 @@
 
 - [ ] 所有测试通过（`cargo test` 和 `npm test`）
 - [ ] 测试覆盖率 ≥ 80%
+- [ ] Agent 通信异常已测试
+- [ ] DeepSeek API 调用失败已测试
 - [ ] 边界情况和错误路径已测试
 
 ### LSP 使用
@@ -231,7 +243,7 @@
 
 ## 完整闭环验证
 
-**开发任务完成前，AI 必须确认（13项）**：
+**开发任务完成前，AI 必须确认（14项）**：
 
 - [ ] 步骤 1：已执行 using-git-worktrees 流程创建分支
 - [ ] 步骤 2：已执行 brainstorming（新功能）或 systematic-debugging（Bug修复）流程
@@ -246,6 +258,7 @@
 - [ ] 步骤 11：已执行 changelog-generator（生成日志）流程
 - [ ] 步骤 12：已执行 commit（提交到 feature 分支）流程
 - [ ] 步骤 13：已执行 finishing-a-development-branch（完成分支）流程
+- [ ] 步骤 14：已执行 auto-merge-and-cleanup（自动合并和清理）流程
 
 **如果任何一项未完成，任务不算完成，必须继续执行直到完整闭环。**
 
@@ -264,12 +277,14 @@
 
 详细技术规范请参考 `.claude/rules/` 目录：
 
-- `01-project-overview.md` - 项目概览和技术栈
-- `02-rust-backend-standards.md` - Rust 后端开发规范
-- `03-react-frontend-standards.md` - React TypeScript 前端规范
+- `01-project-overview.md` - WeReply 项目概览和技术栈
+- `02-rust-backend-standards.md` - Rust 后端开发规范（Orchestrator）
+- `03-react-frontend-standards.md` - React TypeScript 前端规范（助手面板）
 - `04-configuration-standards.md` - 配置管理与环境变量规范
 - `05-lsp-usage-standards.md` - LSP 使用规范
-- `06-security-standards.md` - 安全开发规范
+- `06-security-standards.md` - 安全开发规范（API 密钥、隐私保护）
 - `07-testing-standards.md` - 测试规范（80% 覆盖率）
-- `08-performance-standards.md` - 性能优化规范
+- `08-performance-standards.md` - 性能优化规范（低延迟响应）
 - `09-parallel-agents-standards.md` - 多 Agent 并行工作规范
+- `10-ipc-protocol-standards.md` - IPC 通信协议规范
+- `11-platform-agent-standards.md` - Platform Agent 开发规范
