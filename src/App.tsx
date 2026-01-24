@@ -32,7 +32,6 @@ const DEFAULT_STATUS: Status = {
 function App() {
   const [status, setStatus] = useState<Status>(DEFAULT_STATUS);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [draftText, setDraftText] = useState("");
   const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>("idle");
@@ -129,24 +128,6 @@ function App() {
     },
     [lastChatId],
   );
-
-  const handleWrite = useCallback(async () => {
-    if (!lastChatId) {
-      message.warning("暂无可写入的聊天");
-      return;
-    }
-    const normalized = normalizeReplyText(draftText);
-    if (!normalized.ok) {
-      message.warning(normalized.reason);
-      return;
-    }
-    const res = await commands.writeSuggestion(lastChatId, normalized.text);
-    if (res.success) {
-      message.success("已写入输入框");
-    } else {
-      message.error(res.message || "写入失败");
-    }
-  }, [draftText, lastChatId]);
 
   const handleSaveApiKey = useCallback(async () => {
     if (!apiKeyInput.trim()) {
@@ -293,7 +274,7 @@ function App() {
         </button>
       </section>
 
-      <section className="grid compact">
+      <section className="grid">
         <div className="panel suggestions">
           <div className="panel-header">
             <h2>回复建议</h2>
@@ -315,22 +296,6 @@ function App() {
               ))}
             </div>
           )}
-        </div>
-
-        <div className="panel reply">
-          <div className="panel-header">
-            <h2>回复消息</h2>
-          </div>
-          <textarea
-            placeholder="输入要写入的回复（仅写入微信输入框，不发送）"
-            value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
-          />
-          <div className="reply-actions">
-            <button onClick={handleWrite} disabled={!draftText.trim()}>
-              回复消息
-            </button>
-          </div>
         </div>
       </section>
 
