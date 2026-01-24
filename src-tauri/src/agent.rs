@@ -411,6 +411,42 @@ fn windows_requirements_path(base: &Path) -> PathBuf {
         .join("requirements.txt")
 }
 
+fn windows_wxauto_vendor_root(base: &Path) -> PathBuf {
+    base.join("platform_agents")
+        .join("windows")
+        .join("vendor")
+        .join("wxauto")
+}
+
+fn windows_wxauto_vendor_exists(base: &Path) -> bool {
+    windows_wxauto_vendor_root(base)
+        .join("wxauto")
+        .join("__init__.py")
+        .is_file()
+}
+
+fn append_pythonpath(env: &mut Vec<(String, String)>, extra: &Path) {
+    let extra = extra.to_string_lossy().to_string();
+    if let Some((_, value)) = env.iter_mut().find(|(k, _)| k == "PYTHONPATH") {
+        let exists = value.split(';').any(|part| part == extra);
+        if !exists {
+            if !value.is_empty() {
+                value.push(';');
+            }
+            value.push_str(&extra);
+        }
+    } else {
+        env.push(("PYTHONPATH".to_string(), extra));
+    }
+}
+
+fn apply_windows_vendor_env(base: &Path, env: &mut Vec<(String, String)>) {
+    if windows_wxauto_vendor_exists(base) {
+        let vendor = windows_wxauto_vendor_root(base);
+        append_pythonpath(env, &vendor);
+    }
+}
+
 fn embedded_python_paths(resource_root: &Path) -> (PathBuf, PathBuf) {
     (
         resource_root.join("python").join("python.exe"),
@@ -445,7 +481,11 @@ fn resolve_windows_python(app: &AppHandle, base: &Path) -> Result<(String, Vec<(
             let (python, _) = embedded_python_paths(&resource_dir);
             return Ok((
                 python.to_string_lossy().to_string(),
-                embedded_python_env(&resource_dir),
+                {
+                    let mut env = embedded_python_env(&resource_dir);
+                    apply_windows_vendor_env(base, &mut env);
+                    env
+                },
             ));
         }
     }
@@ -455,11 +495,17 @@ fn resolve_windows_python(app: &AppHandle, base: &Path) -> Result<(String, Vec<(
         let (python, _) = embedded_python_paths(&repo_resources);
         return Ok((
             python.to_string_lossy().to_string(),
-            embedded_python_env(&repo_resources),
+            {
+                let mut env = embedded_python_env(&repo_resources);
+                apply_windows_vendor_env(base, &mut env);
+                env
+            },
         ));
     }
 
-    Ok(("python".to_string(), Vec::new()))
+    let mut env = Vec::new();
+    apply_windows_vendor_env(base, &mut env);
+    Ok(("python".to_string(), env))
 }
 
 async fn run_python_command(
@@ -577,6 +623,41 @@ mod tests {
         let base = std::path::Path::new("C:/app");
         let path = windows_requirements_path(base);
         assert!(path.ends_with("platform_agents/windows/requirements.txt"));
+    }
+
+    #[test]
+    fn windows_wxauto_vendor_root_is_under_platform_agents() {
+        let base = std::path::Path::new("C:/app");
+        let path = windows_wxauto_vendor_root(base);
+        assert!(path.ends_with("platform_agents/windows/vendor/wxauto"));
+    }
+
+    #[test]
+    fn append_pythonpath_adds_vendor_path() {
+        let mut env = vec![("PYTHONPATH".to_string(), "C:/existing".to_string())];
+        append_pythonpath(&mut env, std::path::Path::new("C:/vendor"));
+        let value = env
+            .iter()
+            .find(|(k, _)| k == "PYTHONPATH")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert!(value.contains("C:/vendor"));
+    }
+
+    #[test]
+    fn windows_wxauto_vendor_exists_checks_init_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path();
+        let init = base
+            .join("platform_agents")
+            .join("windows")
+            .join("vendor")
+            .join("wxauto")
+            .join("wxauto")
+            .join("__init__.py");
+        std::fs::create_dir_all(init.parent().unwrap()).unwrap();
+        std::fs::write(&init, "").unwrap();
+        assert!(windows_wxauto_vendor_exists(base));
     }
 
     #[test]

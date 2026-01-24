@@ -1,3 +1,2 @@
-wxauto
 pyautogui
 pyperclip

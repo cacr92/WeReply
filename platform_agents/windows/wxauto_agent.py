@@ -1,4 +1,5 @@
 import json
+import os
 import queue
 import sys
 import threading
@@ -6,6 +7,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+VENDOR_ROOT = os.path.join(os.path.dirname(__file__), "vendor", "wxauto")
+if os.path.isdir(VENDOR_ROOT) and VENDOR_ROOT not in sys.path:
+    sys.path.insert(0, VENDOR_ROOT)
 
 try:
     from wxauto import WeChat
