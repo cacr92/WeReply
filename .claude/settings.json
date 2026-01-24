@@ -5,6 +5,10 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
+  "statusLine": {
+  "type": "command",
+  "command": "npx ccusage statusline"
+  },
   "enabledPlugins": {
     "rust-analyzer-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true
