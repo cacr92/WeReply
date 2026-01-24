@@ -49,6 +49,53 @@ def send_json(message: Dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
+def select_wechat_main_hwnd(
+    windows: list[tuple[int, str, str]],
+    path_by_hwnd: Dict[int, str],
+) -> Optional[int]:
+    candidates = []
+    for hwnd, class_name, title in windows:
+        class_name = class_name or ""
+        title = title or ""
+        if (
+            "微信" in title
+            or "WeChat" in title
+            or "Weixin" in title
+            or "WeChat" in class_name
+            or "Weixin" in class_name
+        ):
+            candidates.append((hwnd, class_name, title))
+    if not candidates:
+        return None
+
+    for hwnd, _, _ in candidates:
+        path = path_by_hwnd.get(hwnd) or ""
+        if os.path.basename(path).lower() == "wechat.exe":
+            return hwnd
+    for hwnd, _, title in candidates:
+        if title in ("微信", "WeChat"):
+            return hwnd
+    for hwnd, _, title in candidates:
+        if title:
+            return hwnd
+    return candidates[0][0]
+
+
+def find_wechat_main_hwnd() -> Optional[int]:
+    try:
+        from wxauto.utils import GetAllWindows, GetPathByHwnd
+    except Exception:
+        return None
+    windows = GetAllWindows()
+    path_by_hwnd: Dict[int, str] = {}
+    for hwnd, _, _ in windows:
+        try:
+            path_by_hwnd[hwnd] = GetPathByHwnd(hwnd) or ""
+        except Exception:
+            path_by_hwnd[hwnd] = ""
+    return select_wechat_main_hwnd(windows, path_by_hwnd)
+
+
 def envelope(msg_type: str, payload: Dict[str, Any], msg_id: Optional[str] = None) -> Dict[str, Any]:
     return {
         "version": "1.0",
@@ -84,7 +131,16 @@ def ensure_wechat() -> Any:
     if STATE.wx is None:
         if WeChat is None:
             raise RuntimeError("wxauto 未安装")
-        STATE.wx = WeChat()
+        try:
+            STATE.wx = WeChat()
+        except Exception as exc:
+            message = str(exc)
+            if "未找到微信窗口" not in message and "未找到已登录的微信主窗口" not in message:
+                raise
+            fallback_hwnd = find_wechat_main_hwnd()
+            if not fallback_hwnd:
+                raise
+            STATE.wx = WeChat(hwnd=fallback_hwnd)
     return STATE.wx
 
 

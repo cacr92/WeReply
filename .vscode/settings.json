@@ -1,0 +1,5 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/platform_agents/windows/vendor/wxauto"
+  ]
+}
