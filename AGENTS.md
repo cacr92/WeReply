@@ -44,7 +44,7 @@
 - ✅ 使用 feature 分支开发，**永不直接修改 main 分支**
 - ✅ 自动生成 changelog 和提交信息
 - ✅ 所有代码提交到新分支，由用户本地验证后合并
-- ✅ 根据修改的文件类型自动调用项目特定 skills
+- ✅ 根据修改的文件类型自动执行项目特定 skills 的流程
 
 ---
 
@@ -55,7 +55,7 @@
 **触发时机**：所有涉及代码修改的任务开始时
 
 ```bash
-调用 Skill(skill: "using-git-worktrees")
+执行 using-git-worktrees 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
 ```
 
 #### 步骤 2：需求分析与设计（brainstorming）
@@ -63,7 +63,7 @@
 **触发条件**：新功能开发
 
 ```bash
-调用 Skill(skill: "brainstorming")
+执行 brainstorming 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
 ```
 
 #### 步骤 3：编写实现计划（writing-plans）
@@ -71,14 +71,14 @@
 **触发条件**：复杂功能或重构任务
 
 ```bash
-调用 Skill(skill: "writing-plans")
+执行 writing-plans 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
 ```
 
 #### 步骤 4：项目特定技术栈检查（自动识别）
 
 **自动识别规则**：
 
-| 文件特征                        | 自动调用 Skill                   | 用途                  |
+| 文件特征                        | 自动执行 Skill 流程              | 用途                  |
 | ------------------------------- | -------------------------------- | --------------------- |
 | `src/wechat/**/*.rs`          | `wechat-automation`            | 微信监听与自动化规范  |
 | `src/ai/**/*.rs`              | `deepseek-integration`         | DeepSeek API 集成规范 |
@@ -90,7 +90,7 @@
 #### 步骤 5：TDD - 先写测试（test-driven-development）
 
 ```bash
-调用 Skill(skill: "test-driven-development")
+执行 test-driven-development 对应的 SKILL.md 流程（如可用则调用 Skill 工具）
 ```
 
 **要求**：先写失败的测试，确保测试覆盖率 ≥ 80%
@@ -120,7 +120,7 @@
 
 ### 特殊流程
 
-**Bug 修复流程（11步）**：跳过步骤2和3，使用 `systematic-debugging` 替代
+**Bug 修复流程（11步）**：跳过步骤2和3，使用 `systematic-debugging` 流程替代（如可用则调用 Skill 工具）
 
 **多任务并行**：智能任务分解 + 最小化隔离
 
@@ -138,10 +138,10 @@
 
 ### 强制要求
 
-1. **必须显式调用 Skill 工具** - ✅ `Skill(skill: "xxx")` / ✗ 仅在文字中说明
+1. **必须执行 Skill 对应流程** - ✅ 读取并严格执行 `SKILL.md`；如工具可用则调用 `Skill(skill: "xxx")`
 2. **不得跳过任何步骤** - 即使是简单任务也必须执行完整流程
 3. **分支保护** - 绝对禁止直接在 main 分支上修改代码
-4. **自动识别技术栈** - 分析文件路径，自动调用相应 skills
+4. **自动识别技术栈** - 分析文件路径，自动执行相应 skills 流程
 
 ---
 
@@ -233,19 +233,19 @@
 
 **开发任务完成前，AI 必须确认（13项）**：
 
-- [ ] 步骤 1：已调用 using-git-worktrees 创建分支
-- [ ] 步骤 2：已调用 brainstorming（新功能）或 systematic-debugging（Bug修复）
-- [ ] 步骤 3：已调用 writing-plans（复杂任务）
-- [ ] 步骤 4：已自动调用项目特定 skills（根据文件类型）
-- [ ] 步骤 5：已调用 test-driven-development（先写测试）
+- [ ] 步骤 1：已执行 using-git-worktrees 流程创建分支
+- [ ] 步骤 2：已执行 brainstorming（新功能）或 systematic-debugging（Bug修复）流程
+- [ ] 步骤 3：已执行 writing-plans（复杂任务）流程
+- [ ] 步骤 4：已自动执行项目特定 skills 流程（根据文件类型）
+- [ ] 步骤 5：已执行 test-driven-development（先写测试）流程
 - [ ] 步骤 6：已实现代码
-- [ ] 步骤 7：已调用 security-review（安全审查）
-- [ ] 步骤 8：已调用 check（质量检查）
-- [ ] 步骤 9：已调用 optimize（性能优化）
-- [ ] 步骤 10：已调用 verification-before-completion（完成验证）
-- [ ] 步骤 11：已调用 changelog-generator（生成日志）
-- [ ] 步骤 12：已调用 commit（提交到 feature 分支）
-- [ ] 步骤 13：已调用 finishing-a-development-branch（完成分支）
+- [ ] 步骤 7：已执行 security-review（安全审查）流程
+- [ ] 步骤 8：已执行 check（质量检查）流程
+- [ ] 步骤 9：已执行 optimize（性能优化）流程
+- [ ] 步骤 10：已执行 verification-before-completion（完成验证）流程
+- [ ] 步骤 11：已执行 changelog-generator（生成日志）流程
+- [ ] 步骤 12：已执行 commit（提交到 feature 分支）流程
+- [ ] 步骤 13：已执行 finishing-a-development-branch（完成分支）流程
 
 **如果任何一项未完成，任务不算完成，必须继续执行直到完整闭环。**
 
