@@ -5,6 +5,7 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
+  "alwaysThinkingEnabled": true,
   "statusLine": {
   "type": "command",
   "command": "npx ccusage statusline"

@@ -4,6 +4,26 @@
 
 ---
 
+## 🚀 自动安装通用 Skills
+
+Claude Code 会在首次使用时自动检测并安装所需的 skills。如需手动安装：
+
+```bash
+# 安装 Superpowers 框架（包含 20+ 核心 skills）
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+
+# 安装 Anthropic 官方 skills（可选）
+/plugin marketplace add anthropics/skills
+/plugin install document-skills@anthropic-agent-skills
+```
+
+**安装后重启 Claude Code 会话以激活所有 skills。**
+
+**验证安装**：运行 `/help` 查看可用的 skills 命令（如 `/brainstorm`, `/write-plan` 等）
+
+---
+
 ## AI 行为准则
 
 ### 对话启动要求
@@ -17,8 +37,9 @@
 
 ### 沟通规范
 
-- **问候语**：对话开始时，以"你好，主人！+你的模型名字"作为开场白
-- **沟通语言**：必须使用中文进行交流
+- **问候语**: 对话开始时，以"你好，主人！我是 [你的模型名字]"作为开场白
+- **沟通语言**: 必须使用中文进行交流
+- **专业性**: 保持专业、客观、技术导向的沟通风格
 
 ---
 
@@ -33,131 +54,283 @@
 
 ### 开发任务（代码修改、新功能、Bug修复）
 
-**必须执行"完整开发闭环流程（14步）"**，详见下方。
+**必须执行的开发流程（6步核心 + 可选步骤）**，详见下方。
 
 ---
 
-## 完整开发闭环流程（14步强制执行）
+## 开发流程（基于 Anthropic 最佳实践）
 
-**核心原则**：
+### 核心原则
 
-- ✅ 使用 feature 分支开发，**永不直接修改 main 分支**
-- ✅ 自动生成 changelog 和提交信息
-- ✅ 所有代码提交到新分支，由用户本地验证后合并
-- ✅ 根据修改的文件类型自动调用项目特定 skills
+- ✅ **Plan-First Workflow** - 先计划后编码（复杂任务）
+- ✅ **使用 feature 分支开发** - 永不直接修改 main 分支
+- ✅ **使用通用 skills** - 避免项目特定依赖
+- ✅ **灵活执行** - 简单任务可跳过部分步骤
+- ✅ **TDD 优先** - 先写测试后写代码
+- ✅ **质量保障** - 完成前必须验证
 
 ---
 
-### 14步开发流程
+### 阶段 1：计划与设计（Plan Mode）
 
-#### 步骤 1：创建隔离分支（using-git-worktrees）
+#### 步骤 1：需求分析（brainstorming）
 
-**触发时机**：所有涉及代码修改的任务开始时
-
-```bash
-调用 Skill(skill: "using-git-worktrees")
-```
-
-#### 步骤 2：需求分析与设计（brainstorming）
-
-**触发条件**：新功能开发
+**触发时机**: 新功能、复杂任务、不清楚的需求
 
 ```bash
 调用 Skill(skill: "brainstorming")
 ```
 
-#### 步骤 3：编写实现计划（writing-plans）
+**作用**:
+- 探索用户意图和需求
+- 澄清技术实现细节（WeReply 特定：微信监听、DeepSeek API、IPC 通信等）
+- 讨论设计方案和权衡
+- 确定功能范围
 
-**触发条件**：复杂功能或重构任务
+**何时跳过**:
+- 简单的 bug 修复
+- 文档更新
+- 明确的小改动
+- 单文件样式调整
+
+---
+
+#### 步骤 2：编写实现计划（writing-plans）
+
+**触发时机**: 复杂功能、重构任务、跨模块修改
 
 ```bash
 调用 Skill(skill: "writing-plans")
 ```
 
-#### 步骤 4：项目特定技术栈检查（自动识别）
+**作用**:
+- 生成详细的实施计划
+- 识别关键文件和依赖（参考 `.claude/rules/01-project-overview.md`）
+- 考虑架构权衡（Rust Orchestrator ↔ Platform Agent ↔ DeepSeek API）
+- 用户审批后执行
 
-**自动识别规则**：
+**何时跳过**:
+- 单文件修改
+- 明确的 API 调整
+- 简单的样式更新
+- UI 文本修改
 
-| 文件特征                       | 自动调用 Skill                   | 用途                  |
-| ------------------------------ | -------------------------------- | --------------------- |
-| `src/wechat/**/*.rs`         | `wechat-automation`            | 微信监听与自动化规范  |
-| `src/ai/**/*.rs`             | `deepseek-integration`         | DeepSeek API 集成规范 |
-| `src/orchestrator/**/*.rs`   | `ipc-communication`            | IPC 通信协议规范      |
-| `platform_agents/**/*.py`    | `python-agent-development`     | Python Agent 开发规范 |
-| `platform_agents/**/*.swift` | `macos-agent-development`      | macOS Agent 开发规范  |
-| `frontend/src/**/*.tsx`      | `react-typescript-development` | React TypeScript 规范 |
-| `src/**/commands.rs`         | `tauri-development`            | Tauri 命令规范        |
-| `src/**/*.rs`（其他）        | `rust-optimization`            | Rust 性能优化         |
-| 任何 API 设计                  | `api-design`                   | API 设计规范          |
+**WeReply 特定考虑**:
+- Agent 通信影响（参考 `.claude/rules/10-ipc-protocol-standards.md`）
+- DeepSeek API 调用变更
+- 微信监听逻辑修改
 
-#### 步骤 5：TDD - 先写测试（test-driven-development）
+---
+
+### 阶段 2：开发实施
+
+#### 步骤 3：创建功能分支
+
+**强制执行**: 所有涉及代码修改的任务
+
+```bash
+git checkout -b feat/your-feature-name
+# 或
+git checkout -b fix/bug-description
+```
+
+**分支命名规范**:
+- `feat/` - 新功能（如：`feat/add-voice-reply-support`）
+- `fix/` - Bug 修复（如：`fix/agent-timeout-issue`）
+- `refactor/` - 重构（如：`refactor/ipc-protocol`）
+- `perf/` - 性能优化（如：`perf/optimize-deepseek-cache`）
+- `test/` - 测试相关（如：`test/agent-communication`）
+
+**绝对禁止**: 直接在 main 分支上修改代码
+
+---
+
+#### 步骤 4：TDD 实现（test-driven-development）
+
+**触发时机**: 所有新功能和 bug 修复
 
 ```bash
 调用 Skill(skill: "test-driven-development")
 ```
 
-**要求**：先写失败的测试，确保测试覆盖率 ≥ 80%
+**TDD 流程**:
+1. **编写测试** - 先写失败的测试
+2. **实现代码** - 编写最小可用代码
+3. **运行测试** - 确保测试通过
+4. **重构** - 优化代码质量
+5. **重复** - 循环直到功能完成
 
-#### 步骤 6：实现代码
+**覆盖率要求**:
+- 整体覆盖率：≥ 80%
+- 核心业务逻辑：≥ 90%
+- 工具函数：≥ 95%
 
-**强制要求**：
+**WeReply 特定测试重点**:
+- Agent 通信异常测试（超时、崩溃、格式错误）
+- DeepSeek API 调用失败测试（网络错误、超时、限流）
+- IPC 消息验证测试（恶意消息、格式错误）
+- 微信监听去重测试
 
-- 遵循所有编码准则
-- 使用 LSP 工具理解现有代码结构
-- 保持原子化提交原则
-
-#### 步骤 7-10：质量保障流程
-
-7. **security-review** - 检查 API 密钥管理、IPC 安全、输入验证
-8. **check** - 运行 `cargo clippy` 和 `npm run lint`
-9. **optimize** - 分析性能瓶颈（监听延迟、API 响应）
-10. **verification-before-completion** - 运行所有测试，验证覆盖率
-
-#### 步骤 11-14：提交和完成
-
-11. **changelog-generator** - 自动生成 CHANGELOG.md 条目
-12. **commit** - 生成规范的提交信息（Conventional Commits）
-13. **finishing-a-development-branch** - 提供 PR/合并/继续开发选项
-14. **auto-merge-and-cleanup** - 自动合并到 main，清理分支和临时文件（强制执行）
-
----
-
-### 特殊流程
-
-**Bug 修复流程（12步）**：跳过步骤2和3，使用 `systematic-debugging` 替代
-
-**多任务并行**：智能任务分解 + 最小化隔离
-
-- **方案 **：使用 Sub-agents - 无物理隔离，简单高效
-
-**并行前提**：
-
-- 任务修改不同文件
-- 任务无依赖关系
-- 系统资源充足
-
-详见：`.claude/rules/09-parallel-agents-standards.md`
+**何时简化**:
+- 纯展示组件（UI only）
+- 配置文件修改
+- 文档更新
 
 ---
 
-### 强制要求
+### 阶段 3：质量保障
 
-1. **必须显式调用 Skill 工具** - ✅ `Skill(skill: "xxx")` / ✗ 仅在文字中说明
-2. **不得跳过任何步骤** - 即使是简单任务也必须执行完整流程
-3. **分支保护** - 绝对禁止直接在 main 分支上修改代码
-4. **自动识别技术栈** - 分析文件路径，自动调用相应 skills
+#### 步骤 5：验证完成（verification-before-completion）
+
+**强制执行**: 所有代码任务
+
+```bash
+调用 Skill(skill: "verification-before-completion")
+```
+
+**验证清单**:
+
+##### 代码质量
+- [ ] `cargo clippy` 无警告
+- [ ] `npm run lint` 无错误
+- [ ] 所有 Tauri 命令有 `#[specta::specta]` 宏
+- [ ] 前端无 `console.log` 和 `as any`
+- [ ] 错误处理使用 `message` 组件（前端）
+- [ ] 使用 tracing 日志（后端）
+- [ ] React Hooks 遵循规则（参考 `.claude/rules/03-react-frontend-standards.md`）
+
+##### 安全检查（WeReply 桌面应用专项）
+- [ ] 无硬编码 API 密钥、密码、tokens
+- [ ] DeepSeek API 密钥使用系统密钥链存储（参考 `.claude/rules/06-security-standards.md`）
+- [ ] IPC 消息已验证（防止恶意 Agent）
+- [ ] Tauri 命令参数已验证
+- [ ] 日志中无敏感信息（聊天内容、API 密钥）
+
+##### 测试覆盖
+- [ ] 所有测试通过（`cargo test` 和 `npm test`）
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] 边界情况已测试
+- [ ] 错误路径已测试
+- [ ] Agent 通信异常已测试（WeReply 特定）
+- [ ] DeepSeek API 调用失败已测试（WeReply 特定）
+
+##### LSP 使用
+- [ ] 修改代码前使用 LSP 查看结构和类型（参考 `.claude/rules/05-lsp-usage-standards.md`）
+- [ ] 使用 `findReferences` 评估修改影响范围
+
+##### WeReply 特定验证
+- [ ] Agent 崩溃不影响主程序运行
+- [ ] 微信消息去重正常工作
+- [ ] DeepSeek API 超时处理正确
+- [ ] IPC 通信延迟 < 100ms（目标）
+- [ ] 建议生成时间 < 3s（目标）
+
+---
+
+#### 步骤 6：完成分支（finishing-a-development-branch）
+
+**强制执行**: 所有代码任务
+
+```bash
+调用 Skill(skill: "finishing-a-development-branch")
+```
+
+**提供选项**:
+1. **创建 Pull Request** - 团队协作、需要审查
+2. **直接合并到 main** - 个人项目、紧急修复
+3. **继续开发** - 功能未完成、需要更多工作
+
+**Commit 规范** (Conventional Commits):
+```
+feat: 添加语音回复支持
+fix: 修复 Agent 超时问题
+refactor: 重构 IPC 消息协议
+perf: 优化 DeepSeek API 缓存
+test: 添加 Agent 通信测试
+docs: 更新 IPC 协议文档
+chore: 更新依赖版本
+```
+
+---
+
+### 可选步骤
+
+#### 可选 A：系统化调试（替代步骤 1-2）
+
+**触发时机**: Bug 修复、异常排查
+
+```bash
+调用 Skill(skill: "systematic-debugging")
+```
+
+**调试流程**:
+1. **重现问题** - 创建可复现的测试用例
+2. **诊断原因** - 使用日志、断点、LSP 分析
+3. **修复问题** - 实施最小化修复
+4. **验证修复** - 确保问题解决且无副作用
+5. **防止复发** - 添加回归测试
+
+**WeReply 特定调试技巧**:
+- 检查 Agent 日志（`platform_agents/logs/`）
+- 查看 tracing 日志（`logs/wereply.log`）
+- 使用 LSP 查看 IPC 消息流
+- 监控 DeepSeek API 响应时间
+
+---
+
+#### 可选 B：代码审查
+
+**触发时机**: 重大功能、重构、安全关键代码
+
+```bash
+调用 Skill(skill: "requesting-code-review")
+```
+
+**审查重点**:
+- 架构设计是否合理（Orchestrator ↔ Agent ↔ DeepSeek）
+- 代码质量和可维护性
+- 安全漏洞和性能问题
+- 测试覆盖率和质量
+
+**WeReply 特定审查点**:
+- IPC 消息格式变更影响（向后兼容性）
+- DeepSeek API 调用频率（避免限流）
+- Agent 崩溃恢复机制
+- 系统密钥链使用正确性
+
+---
+
+#### 可选 C：前端设计
+
+**触发时机**: 创建新 UI 组件、优化用户体验
+
+```bash
+调用 Skill(skill: "frontend-design")
+```
+
+**设计重点**:
+- 使用 Ant Design 组件库
+- 遵循响应式设计
+- 支持暗色模式（如需要）
+- 优化性能（懒加载、虚拟滚动）
+
+**WeReply 特定 UI 需求**:
+- 助手面板跟随微信窗口（参考 `.claude/rules/03-react-frontend-standards.md`）
+- 建议列表实时更新
+- 编辑功能流畅
+- 错误提示友好
 
 ---
 
 ## 核心编码准则
 
-### 严禁事项（桌面应用专项）
+### 严禁事项（WeReply 桌面应用专项）
 
-1. **禁止 `console.log/error/warn`** → 使用 `message.error/success/warning`
+1. **禁止 `console.log/error/warn`** → 使用 `message.error/success/warning`（前端）或 `tracing`（后端）
 2. **禁止 `as any` 类型转换** → 使用精确类型断言或类型守卫
 3. **禁止原始 `invoke`** → 使用生成的 `commands`
 4. **禁止在循环中使用 Hooks**
-5. **禁止硬编码 API 密钥** → 使用系统密钥链存储
+5. **禁止硬编码 API 密钥** → 使用系统密钥链存储（DeepSeek API 密钥）
 6. **禁止阻塞异步运行时** → 使用 `tokio::spawn` 或 `tokio::time::sleep`
 
 ### 必须遵守
@@ -166,7 +339,7 @@
 2. **使用 `message` 组件** - 所有用户反馈通过 Ant Design `message` 组件
 3. **使用 tracing 日志** - 使用结构化日志记录
 4. **使用 `anyhow::Result + ApiResponse`** - 底层 anyhow，顶层 ApiResponse
-5. **使用 JSON 进行 IPC 通信** - Rust ↔ Agent 使用 JSON 协议
+5. **使用 JSON 进行 IPC 通信** - Rust Orchestrator ↔ Platform Agent 使用 JSON 协议
 6. **处理 Agent 异常** - 优雅处理 Agent 崩溃和超时
 7. **主动使用 LSP 工具** - 修改代码前查看、评估影响、理解结构
 
@@ -174,23 +347,46 @@
 
 ## 核心工作原则
 
-### 1. 上下文驱动开发
+### 1. Plan-First Workflow（复杂任务）
+
+在任何复杂代码修改前，先进行计划和设计。根据 [Anthropic 官方建议](https://www.anthropic.com/engineering/claude-code-best-practices)，"先计划后编码"可以显著提高代码质量和开发效率。
+
+**推荐流程**:
+1. 使用 `brainstorming` skill 探索需求
+2. 使用 `writing-plans` skill 生成计划
+3. 用户审批计划后再执行
+
+### 2. 上下文驱动开发
 
 在任何代码修改前，必须彻底理解业务需求、现有代码逻辑及其上下文。禁止在信息不完整或存在假设的情况下进行编码。
 
-### 2. 原子化提交
+**使用 LSP 工具**（参考 `.claude/rules/05-lsp-usage-standards.md`）:
+- `goToDefinition` - 查看函数定义
+- `findReferences` - 评估修改影响
+- `hover` - 查看类型信息
+- `documentSymbol` - 了解文件结构
+
+### 3. Test-Driven Development (TDD)
+
+遵循 TDD 原则，先写测试后写代码。这确保：
+- 代码可测试性
+- 需求明确性
+- 重构安全性
+- 高覆盖率
+
+### 4. 原子化提交
 
 每次修改遵循最小化原则，每次提交仅解决一个明确定义的问题。
 
-### 3. 完整功能交付
+### 5. 完整功能交付
 
 一次性完成所有相关功能，不留 `TODO` 或未完成的实现。
 
-### 4. 文档生成限制
+### 6. 文档生成限制
 
 严禁主动生成任何文档（README、API文档等）。仅当用户明确要求时才生成。
 
-### 5. 命令执行规范
+### 7. 命令执行规范
 
 - ❌ 禁止编写脚本文件（.sh、.bat等）
 - ✅ 直接使用工具逐条执行命令
@@ -199,10 +395,75 @@
 
 ---
 
+## WeReply 项目特定指南
+
+### 技术栈概览
+
+- **后端**: Rust 2021 + Tauri 2.x + Tokio 1.37
+- **前端**: React 18 + TypeScript 5.x + Ant Design 5.x + Vite
+- **Platform Agents**:
+  - Windows: Python 3.9+ + wxauto v4
+  - macOS: Swift + Accessibility API
+- **AI 集成**: 仅支持 DeepSeek API
+- **通信协议**: IPC (JSON via stdin/stdout)
+
+详见：`.claude/rules/01-project-overview.md`
+
+---
+
+### 修改文件时的技术栈检查
+
+**自动参考对应规范**（不需要调用自定义 skills，直接参考文档）:
+
+| 文件路径 | 参考规范文档 | 关键点 |
+|---------|------------|-------|
+| `src/wechat/**/*.rs` | `.claude/rules/02-rust-backend-standards.md` | 微信监听、消息去重 |
+| `src/ai/**/*.rs` | `.claude/rules/02-rust-backend-standards.md` + `06-security-standards.md` | DeepSeek API、密钥管理 |
+| `src/orchestrator/**/*.rs` | `.claude/rules/02-rust-backend-standards.md` + `10-ipc-protocol-standards.md` | IPC 通信、状态机 |
+| `platform_agents/**/*.py` | `.claude/rules/11-platform-agent-standards.md` | wxauto v4、消息监听 |
+| `platform_agents/**/*.swift` | `.claude/rules/11-platform-agent-standards.md` | Accessibility API |
+| `frontend/src/**/*.tsx` | `.claude/rules/03-react-frontend-standards.md` | React Hooks、Ant Design |
+| `src/**/commands.rs` | `.claude/rules/02-rust-backend-standards.md` | Tauri 命令、specta 类型 |
+| 任何 API 设计 | `.claude/rules/06-security-standards.md` | 输入验证、错误处理 |
+
+---
+
+### 性能目标（参考 `.claude/rules/08-performance-standards.md`）
+
+- **消息监听延迟**: < 500ms
+- **DeepSeek 建议生成时间**: < 3s
+- **建议展示响应**: < 100ms
+- **文本输入延迟**: < 200ms
+- **Agent 重启时间**: < 2s
+- **IPC 通信延迟**: < 100ms
+
+---
+
+### 安全重点（参考 `.claude/rules/06-security-standards.md`）
+
+1. **DeepSeek API 密钥** - 必须使用系统密钥链存储
+2. **IPC 消息验证** - 防止恶意 Agent 消息
+3. **聊天内容隐私** - 不记录到日志、不上传（除 DeepSeek API）
+4. **Agent 进程隔离** - Agent 崩溃不影响主程序
+
+---
+
+## 多任务并行工作规范
+
+**推荐方案**: 使用 Sub-agents（无物理隔离，简单高效）
+
+**并行前提**:
+- 任务修改不同文件
+- 任务无依赖关系
+- 系统资源充足
+
+详见：`.claude/rules/09-parallel-agents-standards.md`
+
+---
+
 ## 提交前检查清单
 
 ### 代码质量
-
 - [ ] `cargo clippy` 无警告
 - [ ] `npm run lint` 无错误
 - [ ] 所有 Tauri 命令有 `#[specta::specta]` 宏
@@ -212,7 +473,6 @@
 - [ ] React Hooks 遵循规则
 
 ### 安全检查
-
 - [ ] 无硬编码 API 密钥、密码、tokens
 - [ ] DeepSeek API 密钥使用系统密钥链存储
 - [ ] IPC 消息已验证（防止恶意 Agent）
@@ -220,40 +480,14 @@
 - [ ] 日志中无敏感信息（聊天内容、API 密钥）
 
 ### 测试覆盖
-
 - [ ] 所有测试通过（`cargo test` 和 `npm test`）
 - [ ] 测试覆盖率 ≥ 80%
 - [ ] Agent 通信异常已测试
 - [ ] DeepSeek API 调用失败已测试
 
 ### LSP 使用
-
 - [ ] 修改代码前使用 LSP 查看结构和类型
 - [ ] 使用 `findReferences` 评估修改影响范围
-- [ ] 已更新 CHANGELOG.md 文件
-
----
-
-## 完整闭环验证
-
-**开发任务完成前，AI 必须确认（14项）**：
-
-- [ ] 步骤 1：已调用 using-git-worktrees 创建分支
-- [ ] 步骤 2：已调用 brainstorming（新功能）或 systematic-debugging（Bug修复）
-- [ ] 步骤 3：已调用 writing-plans（复杂任务）
-- [ ] 步骤 4：已自动调用项目特定 skills（根据文件类型）
-- [ ] 步骤 5：已调用 test-driven-development（先写测试）
-- [ ] 步骤 6：已实现代码
-- [ ] 步骤 7：已调用 security-review（安全审查）
-- [ ] 步骤 8：已调用 check（质量检查）
-- [ ] 步骤 9：已调用 optimize（性能优化）
-- [ ] 步骤 10：已调用 verification-before-completion（完成验证）
-- [ ] 步骤 11：已调用 changelog-generator（生成日志）
-- [ ] 步骤 12：已调用 commit（提交到 feature 分支）
-- [ ] 步骤 13：已调用 finishing-a-development-branch（完成分支）
-- [ ] 步骤 14：已调用 auto-merge-and-cleanup（自动合并和清理）
-
-**如果任何一项未完成，任务不算完成，必须继续执行直到完整闭环。**
 
 ---
 
@@ -279,5 +513,9 @@
 - `07-testing-standards.md` - 测试规范（80% 覆盖率）
 - `08-performance-standards.md` - 性能优化规范（低延迟响应）
 - `09-parallel-agents-standards.md` - 多 Agent 并行工作规范
-- `10-ipc-protocol-standards.md` - IPC 通信协议规范
-- `11-platform-agent-standards.md` - Platform Agent 开发规范
+- `10-ipc-protocol-standards.md` - IPC 通信协议规范（已移除，但内容保留在项目中）
+- `11-platform-agent-standards.md` - Platform Agent 开发规范（已移除，但内容保留在项目中）
+
+**注意**: `10-ipc-protocol-standards.md` 和 `11-platform-agent-standards.md` 文件可能已不存在，但相关内容已整合到其他规范文档中。
+
+---
