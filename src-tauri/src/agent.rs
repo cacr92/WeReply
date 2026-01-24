@@ -373,7 +373,7 @@ fn find_agent_root(app: &AppHandle) -> Result<PathBuf> {
     anyhow::bail!("未找到 platform_agents 目录");
 }
 
-const WINDOWS_AGENT_MODULES: &[&str] = &["wxauto", "pyautogui", "pyperclip"];
+const WINDOWS_AGENT_MODULES: &[&str] = &["wxauto", "pyautogui", "pyperclip", "comtypes"];
 const WINDOWS_DEP_INSTALL_TIMEOUT_SECONDS: u64 = 60;
 
 static WINDOWS_DEP_READY: AtomicBool = AtomicBool::new(false);
@@ -664,6 +664,11 @@ mod tests {
     fn python_check_args_are_stable_for_three_modules() {
         let args = python_check_args(&["wxauto", "pyautogui", "pyperclip"]);
         assert_eq!(args.len(), 2);
+    }
+
+    #[test]
+    fn windows_agent_modules_include_comtypes() {
+        assert!(WINDOWS_AGENT_MODULES.contains(&"comtypes"));
     }
 
     #[test]
