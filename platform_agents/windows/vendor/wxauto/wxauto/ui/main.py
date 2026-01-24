@@ -21,6 +21,7 @@ from wxauto.ui.component import (
     ProfileWnd,
     WeChatDialog
 )
+from wxauto.ui.layout import LayoutLabels, discover_main_controls
 from wxauto.languages import *
 from wxauto.utils import (
     GetAllWindows,
@@ -301,24 +302,64 @@ class WeChatMainWnd(WeChatSubWnd):
         print(f'初始化成功，获取到已登录窗口：{self.nickname}')
 
     def _setup_ui(self, hwnd: int):
+        self.HWND = hwnd
+        self.control = uia.ControlFromHandle(hwnd)
+        legacy_error = None
         try:
-            self.HWND = hwnd
-            self.control = uia.ControlFromHandle(hwnd)
-            MainControl1 = [i for i in self.control.GetChildren() if not i.ClassName][0]
-            MainControl2 = MainControl1.GetFirstChildControl()
-            navigation_control, sessionbox_control, chatbox_control  = MainControl2.GetChildren()
-            self._navigation_api = NavigationBox(navigation_control, self)
-            self._session_api = SessionBox(sessionbox_control, self)
-            self._chat_api = ChatBox(chatbox_control, self)
-            self.nickname = self._navigation_api.my_icon.Name
-            self.NavigationBox = self._navigation_api.control
-            self.SessionBox = self._session_api.control
-            self.ChatBox = self._chat_api.control
-        except Exception as e:
-            debug_file = os.path.join(os.getcwd(), 'wxauto_DEBUG_INIT.txt')
-            with open(debug_file, 'w', encoding='utf8') as f:
-                f.write(self.control.tree_text)
-            raise Exception(f'WeChat实例初始化失败，请将该文件发给管理员反馈：{debug_file}')
+            main_controls = [i for i in self.control.GetChildren() if not i.ClassName][0]
+            main_root = main_controls.GetFirstChildControl()
+            navigation_control, sessionbox_control, chatbox_control = main_root.GetChildren()
+            self._assign_main_controls(navigation_control, sessionbox_control, chatbox_control)
+            return
+        except Exception as exc:
+            legacy_error = exc
+
+        labels = self._build_layout_labels()
+        controls = discover_main_controls(self.control, labels)
+        if not (controls.navigation and controls.session and controls.chat):
+            raise Exception('WeChat实例初始化失败，未找到主界面控件') from legacy_error
+        self._assign_main_controls(controls.navigation, controls.session, controls.chat)
+
+    def _assign_main_controls(self, navigation_control, sessionbox_control, chatbox_control):
+        self._navigation_api = NavigationBox(navigation_control, self)
+        self._session_api = SessionBox(sessionbox_control, self)
+        self._chat_api = ChatBox(chatbox_control, self)
+        self.nickname = self._navigation_api.my_icon.Name
+        self.NavigationBox = self._navigation_api.control
+        self.SessionBox = self._session_api.control
+        self.ChatBox = self._chat_api.control
+
+    def _build_layout_labels(self) -> LayoutLabels:
+        def names(items):
+            resolved = set()
+            for item in items:
+                value = self._lang(item)
+                if value:
+                    resolved.add(value)
+                resolved.add(item)
+            return resolved
+
+        return LayoutLabels(
+            session_list_names=names(["会话", "折叠的群聊"]),
+            session_search_names=names(["搜索"]),
+            message_list_names=names(["消息"]),
+            send_button_names=names(["发送", "发送(S)", "Send"]),
+            navigation_button_names=names(
+                [
+                    "聊天",
+                    "通讯录",
+                    "收藏",
+                    "聊天文件",
+                    "朋友圈",
+                    "搜一搜",
+                    "视频号",
+                    "看一看",
+                    "小程序面板",
+                    "手机",
+                    "设置及其他",
+                ]
+            ),
+        )
 
     def __repr__(self):
         return f'<{PROJECT_NAME} - {self.__class__.__name__} object("{self.nickname}")>'
