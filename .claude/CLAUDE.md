@@ -33,11 +33,11 @@
 
 ### 开发任务（代码修改、新功能、Bug修复）
 
-**必须执行"完整开发闭环流程（13步）"**，详见下方。
+**必须执行"完整开发闭环流程（14步）"**，详见下方。
 
 ---
 
-## 完整开发闭环流程（13步强制执行）
+## 完整开发闭环流程（14步强制执行）
 
 **核心原则**：
 
@@ -48,7 +48,7 @@
 
 ---
 
-### 13步开发流程
+### 14步开发流程
 
 #### 步骤 1：创建隔离分支（using-git-worktrees）
 
@@ -113,17 +113,18 @@
 9. **optimize** - 分析性能瓶颈（监听延迟、API 响应）
 10. **verification-before-completion** - 运行所有测试，验证覆盖率
 
-#### 步骤 11-13：提交和完成
+#### 步骤 11-14：提交和完成
 
 11. **changelog-generator** - 自动生成 CHANGELOG.md 条目
 12. **commit** - 生成规范的提交信息（Conventional Commits）
 13. **finishing-a-development-branch** - 提供 PR/合并/继续开发选项
+14. **auto-merge-and-cleanup** - 自动合并到 main，清理分支和临时文件（强制执行）
 
 ---
 
 ### 特殊流程
 
-**Bug 修复流程（11步）**：跳过步骤2和3，使用 `systematic-debugging` 替代
+**Bug 修复流程（12步）**：跳过步骤2和3，使用 `systematic-debugging` 替代
 
 **多任务并行**：智能任务分解 + 最小化隔离
 
@@ -235,7 +236,7 @@
 
 ## 完整闭环验证
 
-**开发任务完成前，AI 必须确认（13项）**：
+**开发任务完成前，AI 必须确认（14项）**：
 
 - [ ] 步骤 1：已调用 using-git-worktrees 创建分支
 - [ ] 步骤 2：已调用 brainstorming（新功能）或 systematic-debugging（Bug修复）
@@ -250,6 +251,7 @@
 - [ ] 步骤 11：已调用 changelog-generator（生成日志）
 - [ ] 步骤 12：已调用 commit（提交到 feature 分支）
 - [ ] 步骤 13：已调用 finishing-a-development-branch（完成分支）
+- [ ] 步骤 14：已调用 auto-merge-and-cleanup（自动合并和清理）
 
 **如果任何一项未完成，任务不算完成，必须继续执行直到完整闭环。**
 
