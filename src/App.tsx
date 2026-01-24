@@ -1,4 +1,4 @@
-import { ChangeEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useReducer, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { message, Modal } from "antd";
 import "./App.css";
@@ -21,6 +21,7 @@ import {
   resolveModelSelection,
 } from "./utils/models";
 import { normalizeReplyText } from "./utils/reply";
+import { createStatusState, statusReducer } from "./utils/status";
 
 const DEFAULT_STATUS: Status = {
   state: "idle",
@@ -30,7 +31,12 @@ const DEFAULT_STATUS: Status = {
 };
 
 function App() {
-  const [status, setStatus] = useState<Status>(DEFAULT_STATUS);
+  const [statusState, dispatchStatus] = useReducer(
+    statusReducer,
+    DEFAULT_STATUS,
+    createStatusState,
+  );
+  const status = statusState.status;
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -55,7 +61,7 @@ function App() {
         commands.getConfig(),
       ]);
       if (statusRes.success && statusRes.data) {
-        setStatus(statusRes.data);
+        dispatchStatus({ type: "bootstrap", status: statusRes.data });
       }
       if (keyRes.success && typeof keyRes.data === "boolean") {
         setApiKeySet(keyRes.data);
@@ -70,7 +76,7 @@ function App() {
 
   useEffect(() => {
     const unlistenStatus = listen<Status>("status.changed", (event) => {
-      setStatus(event.payload);
+      dispatchStatus({ type: "event", status: event.payload });
     });
     const unlistenSuggestions = listen<SuggestionsUpdated>(
       "suggestions.updated",
@@ -93,6 +99,7 @@ function App() {
   const handleStart = useCallback(async () => {
     const res = await commands.startListening();
     if (res.success) {
+      dispatchStatus({ type: "optimistic", state: "listening", last_error: "" });
       message.success("开始监听");
     } else {
       message.error(res.message || "启动失败");
@@ -102,6 +109,7 @@ function App() {
   const handleStop = useCallback(async () => {
     const res = await commands.stopListening();
     if (res.success) {
+      dispatchStatus({ type: "optimistic", state: "idle", last_error: "" });
       message.success("已停止");
     } else {
       message.error(res.message || "停止失败");
