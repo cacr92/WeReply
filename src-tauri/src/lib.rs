@@ -511,10 +511,10 @@ fn adjust_window_size(app: &AppHandle) {
     };
     let scale_factor = monitor.scale_factor();
     let logical_size: LogicalSize<f64> = monitor.size().to_logical(scale_factor);
-    let target_width = (logical_size.width * 0.7).round();
-    let target_height = (logical_size.height * 0.85).round();
-    let width = target_width.clamp(640.0, 1200.0);
-    let height = target_height.clamp(720.0, 900.0);
+    let target_width = (logical_size.width * 0.5).round();
+    let target_height = (logical_size.height * 0.6).round();
+    let width = target_width.clamp(600.0, 1100.0);
+    let height = target_height.clamp(640.0, 900.0);
     if let Err(err) = window.set_size(Size::Logical(LogicalSize { width, height })) {
         warn!("窗口尺寸调整失败: {}", err);
     }
