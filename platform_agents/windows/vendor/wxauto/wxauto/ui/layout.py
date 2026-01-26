@@ -20,8 +20,10 @@ class MainControls:
     chat: Optional[object]
 
 
-DEFAULT_MAX_DEPTH = 14
-SUBTREE_SCAN_DEPTH = 6
+DEFAULT_MAX_DEPTH = 18
+SUBTREE_SCAN_DEPTH = 8
+EDIT_CONTROL_TYPES = {"EditControl", "DocumentControl"}
+LIST_CONTROL_TYPES = {"ListControl", "TableControl", "DataGridControl"}
 
 
 def discover_main_controls(root: object, labels: LayoutLabels) -> MainControls:
@@ -32,8 +34,8 @@ def discover_main_controls(root: object, labels: LayoutLabels) -> MainControls:
 
 
 def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) -> Optional[object]:
-    session_list = _find_first_by_type_and_name(
-        root, "ListControl", labels.session_list_names, max_depth
+    session_list = _find_first_by_types_and_name(
+        root, LIST_CONTROL_TYPES, labels.session_list_names, max_depth
     )
     if session_list:
         candidate = _find_ancestor_with(
@@ -43,8 +45,8 @@ def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) 
         if candidate:
             return candidate
 
-    search_box = _find_first_by_type_and_name(
-        root, "EditControl", labels.session_search_names, max_depth
+    search_box = _find_first_by_types_and_name(
+        root, EDIT_CONTROL_TYPES, labels.session_search_names, max_depth
     )
     if search_box:
         candidate = _find_ancestor_with(
@@ -54,7 +56,7 @@ def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) 
         if candidate:
             return candidate
 
-    any_list = _find_first_by_type(root, "ListControl", max_depth)
+    any_list = _find_first_by_types(root, LIST_CONTROL_TYPES, max_depth)
     if any_list:
         candidate = _find_ancestor_with(
             any_list,
@@ -69,8 +71,8 @@ def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) 
 
 
 def _find_chat_container(root: object, labels: LayoutLabels, max_depth: int) -> Optional[object]:
-    message_list = _find_first_by_type_and_name(
-        root, "ListControl", labels.message_list_names, max_depth
+    message_list = _find_first_by_types_and_name(
+        root, LIST_CONTROL_TYPES, labels.message_list_names, max_depth
     )
     if message_list:
         candidate = _find_ancestor_with(
@@ -137,16 +139,16 @@ def _find_navigation_container(root: object, labels: LayoutLabels, max_depth: in
 
 
 def _looks_like_session_container(control: object, labels: LayoutLabels) -> bool:
-    has_search_named = _has_descendant_by_type_and_name(
-        control, "EditControl", labels.session_search_names
+    has_search_named = _has_descendant_by_types_and_name(
+        control, EDIT_CONTROL_TYPES, labels.session_search_names
     )
-    has_list_named = _has_descendant_by_type_and_name(
-        control, "ListControl", labels.session_list_names
+    has_list_named = _has_descendant_by_types_and_name(
+        control, LIST_CONTROL_TYPES, labels.session_list_names
     )
     if has_search_named and has_list_named:
         return True
-    has_edit = _has_descendant_by_type(control, "EditControl")
-    has_list = _has_descendant_by_type(control, "ListControl")
+    has_edit = _has_descendant_by_types(control, EDIT_CONTROL_TYPES)
+    has_list = _has_descendant_by_types(control, LIST_CONTROL_TYPES)
     has_send_named = _has_descendant_by_type_and_name(
         control, "ButtonControl", labels.send_button_names
     )
@@ -154,9 +156,9 @@ def _looks_like_session_container(control: object, labels: LayoutLabels) -> bool
 
 
 def _looks_like_chat_container(control: object, labels: LayoutLabels) -> bool:
-    has_edit = _has_descendant_by_type(control, "EditControl")
-    has_message_list = _has_descendant_by_type_and_name(
-        control, "ListControl", labels.message_list_names
+    has_edit = _has_descendant_by_types(control, EDIT_CONTROL_TYPES)
+    has_message_list = _has_descendant_by_types_and_name(
+        control, LIST_CONTROL_TYPES, labels.message_list_names
     )
     has_send = _has_descendant_by_type_and_name(
         control, "ButtonControl", labels.send_button_names
@@ -179,6 +181,27 @@ def _has_descendant_by_type_and_name(
     return _subtree_has(
         control,
         lambda ctrl: _control_type(ctrl) == control_type and _control_name(ctrl) in names,
+        SUBTREE_SCAN_DEPTH,
+    )
+
+
+def _has_descendant_by_types(control: object, control_types: Set[str]) -> bool:
+    if not control_types:
+        return False
+    return _subtree_has(
+        control, lambda ctrl: _control_type(ctrl) in control_types, SUBTREE_SCAN_DEPTH
+    )
+
+
+def _has_descendant_by_types_and_name(
+    control: object, control_types: Set[str], names: Set[str]
+) -> bool:
+    names = {name for name in names if name}
+    if not control_types or not names:
+        return False
+    return _subtree_has(
+        control,
+        lambda ctrl: _control_type(ctrl) in control_types and _control_name(ctrl) in names,
         SUBTREE_SCAN_DEPTH,
     )
 
@@ -215,11 +238,34 @@ def _find_first_by_type_and_name(
     )
 
 
+def _find_first_by_types_and_name(
+    root: object, control_types: Set[str], names: Set[str], max_depth: int
+) -> Optional[object]:
+    names = {name for name in names if name}
+    if not control_types or not names:
+        return None
+    return _find_first_control_matching(
+        root,
+        lambda ctrl: _control_type(ctrl) in control_types and _control_name(ctrl) in names,
+        max_depth,
+    )
+
+
 def _find_first_by_type(
     root: object, control_type: str, max_depth: int
 ) -> Optional[object]:
     return _find_first_control_matching(
         root, lambda ctrl: _control_type(ctrl) == control_type, max_depth
+    )
+
+
+def _find_first_by_types(
+    root: object, control_types: Set[str], max_depth: int
+) -> Optional[object]:
+    if not control_types:
+        return None
+    return _find_first_control_matching(
+        root, lambda ctrl: _control_type(ctrl) in control_types, max_depth
     )
 
 

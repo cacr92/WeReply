@@ -427,7 +427,7 @@ html[data-theme="dark"] .empty {
   display: grid;
   gap: 8px;
   align-items: center;
-  grid-template-columns: minmax(180px, 1fr) 120px repeat(3, auto);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) repeat(3, auto);
 }
 
 .listen-row input,
@@ -444,7 +444,7 @@ html[data-theme="dark"] .empty {
 }
 
 .listen-row select {
-  min-width: 110px;
+  min-width: 160px;
 }
 
 .listen-columns {

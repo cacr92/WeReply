@@ -1,4 +1,11 @@
-import { ChangeEvent, useCallback, useEffect, useReducer, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+} from "react";
 import { listen } from "@tauri-apps/api/event";
 import { message, Modal } from "antd";
 import "./App.css";
@@ -26,8 +33,8 @@ import {
   MAX_LISTEN_TARGETS,
   mergeListenTargets,
   normalizeListenTargetList,
-  normalizeListenTargets,
 } from "./utils/listenTargets";
+import { filterRecentChats, type RecentChat } from "./utils/recentChats";
 import { normalizeReplyText } from "./utils/reply";
 import { createStatusState, statusReducer } from "./utils/status";
 
@@ -36,12 +43,6 @@ const DEFAULT_STATUS: Status = {
   platform: "unknown",
   agent_connected: false,
   last_error: "",
-};
-
-type RecentChat = {
-  chat_id: string;
-  chat_title: string;
-  kind: ListenTargetKind;
 };
 
 const LISTEN_KIND_LABELS: Record<ListenTargetKind, string> = {
@@ -67,8 +68,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listenModalOpen, setListenModalOpen] = useState(false);
   const [listenTargets, setListenTargets] = useState<ListenTarget[]>([]);
-  const [listenInput, setListenInput] = useState("");
-  const [listenKind, setListenKind] = useState<ListenTargetKind>("unknown");
+  const [recentFilter, setRecentFilter] = useState("");
+  const [selectedRecentChatId, setSelectedRecentChatId] = useState("");
   const [listenDirty, setListenDirty] = useState(false);
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
@@ -151,6 +152,31 @@ function App() {
     void refreshRecentChats();
   }, [listenModalOpen, refreshRecentChats]);
 
+  useEffect(() => {
+    if (!listenModalOpen) {
+      return;
+    }
+    setRecentFilter("");
+    setSelectedRecentChatId("");
+  }, [listenModalOpen]);
+
+  const filteredRecentChats = useMemo(
+    () => filterRecentChats(recentChats, recentFilter),
+    [recentChats, recentFilter],
+  );
+
+  useEffect(() => {
+    if (!selectedRecentChatId) {
+      return;
+    }
+    const stillVisible = filteredRecentChats.some(
+      (chat) => chat.chat_id === selectedRecentChatId,
+    );
+    if (!stillVisible) {
+      setSelectedRecentChatId("");
+    }
+  }, [filteredRecentChats, selectedRecentChatId]);
+
   const saveListenTargets = useCallback(
     async (targets: ListenTarget[], showToast: boolean) => {
       const normalized = normalizeListenTargetList(targets);
@@ -172,26 +198,6 @@ function App() {
     },
     [setListenTargets, setListenDirty],
   );
-
-  const handleAddManualTarget = useCallback(() => {
-    const additions = normalizeListenTargets([listenInput], listenKind);
-    if (additions.length === 0) {
-      message.warning("请输入联系人或群名称");
-      return;
-    }
-    const merged = mergeListenTargets(listenTargets, additions);
-    if (merged.length === listenTargets.length) {
-      message.info("已在监听列表中");
-      return;
-    }
-    if (merged.length > MAX_LISTEN_TARGETS) {
-      message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
-      return;
-    }
-    setListenTargets(merged);
-    setListenInput("");
-    setListenDirty(true);
-  }, [listenInput, listenKind, listenTargets]);
 
   const handleAddRecentTarget = useCallback(
     (chat: RecentChat) => {
@@ -215,6 +221,22 @@ function App() {
     },
     [listenTargets],
   );
+
+  const handleAddSelectedRecentTarget = useCallback(() => {
+    if (!selectedRecentChatId) {
+      message.warning("请选择最近会话");
+      return;
+    }
+    const selected = recentChats.find(
+      (chat) => chat.chat_id === selectedRecentChatId,
+    );
+    if (!selected) {
+      message.warning("请选择最近会话");
+      return;
+    }
+    handleAddRecentTarget(selected);
+    setSelectedRecentChatId("");
+  }, [selectedRecentChatId, recentChats, handleAddRecentTarget]);
 
   const handleRemoveTarget = useCallback((name: string) => {
     setListenTargets((prev) => prev.filter((item) => item.name !== name));
@@ -568,27 +590,34 @@ function App() {
             <div className="listen-row">
               <input
                 type="text"
-                placeholder="输入联系人或群名"
-                value={listenInput}
-                onChange={(event) => setListenInput(event.target.value)}
+                placeholder="搜索最近会话"
+                value={recentFilter}
+                onChange={(event) => setRecentFilter(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    handleAddManualTarget();
+                    handleAddSelectedRecentTarget();
                   }
                 }}
               />
               <select
-                value={listenKind}
-                onChange={(event) =>
-                  setListenKind(event.target.value as ListenTargetKind)
-                }
+                value={selectedRecentChatId}
+                onChange={(event) => setSelectedRecentChatId(event.target.value)}
+                disabled={recentLoading || recentChats.length === 0}
               >
-                <option value="unknown">未知</option>
-                <option value="direct">私聊</option>
-                <option value="group">群聊</option>
+                <option value="">选择最近会话</option>
+                {filteredRecentChats.map((chat) => (
+                  <option key={chat.chat_id} value={chat.chat_id}>
+                    {chat.chat_title || chat.chat_id}（
+                    {LISTEN_KIND_LABELS[chat.kind]}）
+                  </option>
+                ))}
               </select>
-              <button className="small" onClick={handleAddManualTarget}>
+              <button
+                className="small"
+                onClick={handleAddSelectedRecentTarget}
+                disabled={!selectedRecentChatId}
+              >
                 添加
               </button>
               <button
@@ -638,9 +667,11 @@ function App() {
                   <div className="empty">加载中...</div>
                 ) : recentChats.length === 0 ? (
                   <div className="empty">暂无会话</div>
+                ) : filteredRecentChats.length === 0 ? (
+                  <div className="empty">无匹配会话</div>
                 ) : (
                   <div className="listen-list">
-                    {recentChats.map((chat) => (
+                    {filteredRecentChats.map((chat) => (
                       <div
                         className="listen-item"
                         key={`${chat.chat_id}-${chat.chat_title}`}

@@ -105,6 +105,32 @@ class LayoutDiscoveryTests(unittest.TestCase):
 
         self.assertIs(controls.chat, chat)
 
+    def test_accepts_document_and_table_controls_for_new_layouts(self):
+        nav = FakeControl(
+            control_type="PaneControl",
+            children=[
+                FakeControl(name="聊天", control_type="ButtonControl"),
+                FakeControl(name="通讯录", control_type="ButtonControl"),
+                FakeControl(name="收藏", control_type="ButtonControl"),
+            ],
+        )
+        session_list = FakeControl(name="会话", control_type="TableControl")
+        search_box = FakeControl(name="搜索", control_type="DocumentControl")
+        session = FakeControl(control_type="PaneControl", children=[search_box, session_list])
+
+        msg_list = FakeControl(name="消息", control_type="DataGridControl")
+        edit_box = FakeControl(name="", control_type="DocumentControl")
+        send_btn = FakeControl(name="发送", control_type="ButtonControl")
+        chat = FakeControl(control_type="PaneControl", children=[msg_list, edit_box, send_btn])
+
+        root = FakeControl(control_type="WindowControl", children=[nav, session, chat])
+
+        controls = discover_main_controls(root, default_labels())
+
+        self.assertIs(controls.navigation, nav)
+        self.assertIs(controls.session, session)
+        self.assertIs(controls.chat, chat)
+
 
 if __name__ == "__main__":
     unittest.main()
