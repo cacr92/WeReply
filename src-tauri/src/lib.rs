@@ -14,7 +14,9 @@ use crate::config::load_config;
 use crate::config::save_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
-use crate::ipc::{InputWritePayload, IpcEnvelope, ListenControlPayload, ListenTargetsPayload};
+use crate::ipc::{
+    ChatsListPayload, InputWritePayload, IpcEnvelope, ListenControlPayload, ListenTargetsPayload,
+};
 use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{
     api_err, api_ok, ApiResponse, ChatSummary, Config, DeepseekDiagnostics, ListenTarget, Platform,
@@ -24,6 +26,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, oneshot};
 use tokio::time::{timeout, Duration};
+use uuid::Uuid;
 use tracing::{info, warn};
 
 type SharedState = Arc<Mutex<AppState>>;
@@ -187,12 +190,14 @@ async fn set_listen_targets(
 
     let sender = {
         let mut guard = state.lock().await;
-        guard.listen_targets = normalized.clone();
-        guard.config.listen_targets = normalized.clone();
-        if let Err(err) = save_config(&app, &guard.config) {
+        let mut next_config = guard.config.clone();
+        next_config.listen_targets = normalized.clone();
+        if let Err(err) = save_config(&app, &next_config) {
             warn!("保存监听对象失败: {}", err);
             return Ok(api_err(err.to_string()));
         }
+        guard.config = next_config;
+        guard.listen_targets = normalized.clone();
         guard.agent.as_ref().map(|agent| agent.clone_sender())
     };
 
@@ -215,6 +220,7 @@ async fn set_listen_targets(
 async fn list_recent_chats(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<Vec<ChatSummary>>, String> {
+    let request_id = Uuid::new_v4().to_string();
     let (sender, receiver) = {
         let mut guard = state.lock().await;
         if guard.pending_chats_list.is_some() {
@@ -225,11 +231,13 @@ async fn list_recent_chats(
             None => return Ok(api_err("Agent 未连接")),
         };
         let (tx, rx) = oneshot::channel();
-        guard.pending_chats_list = Some(tx);
+        guard.pending_chats_list = Some((request_id.clone(), tx));
         (sender, rx)
     };
 
-    let payload_value = serde_json::json!({});
+    let payload_value =
+        serde_json::to_value(ChatsListPayload { request_id: request_id.clone() })
+            .map_err(|err| err.to_string())?;
     if let Err(err) = sender.send(IpcEnvelope::new("chats.list", payload_value)).await {
         let mut guard = state.lock().await;
         guard.pending_chats_list = None;
@@ -241,12 +249,16 @@ async fn list_recent_chats(
         Ok(Ok(chats)) => Ok(api_ok(chats)),
         Ok(Err(_)) => {
             let mut guard = state.lock().await;
-            guard.pending_chats_list = None;
+            if matches!(guard.pending_chats_list.as_ref(), Some((pending_id, _)) if pending_id == &request_id) {
+                guard.pending_chats_list = None;
+            }
             Ok(api_err("会话列表获取失败"))
         }
         Err(_) => {
             let mut guard = state.lock().await;
-            guard.pending_chats_list = None;
+            if matches!(guard.pending_chats_list.as_ref(), Some((pending_id, _)) if pending_id == &request_id) {
+                guard.pending_chats_list = None;
+            }
             Ok(api_err("会话列表请求超时"))
         }
     }

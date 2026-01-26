@@ -75,7 +75,13 @@ pub struct ListenTargetsPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatsListPayload {
+    pub request_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatsListResultPayload {
+    pub request_id: String,
     pub chats: Vec<ChatSummary>,
 }
 

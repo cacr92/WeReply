@@ -1,4 +1,5 @@
 use crate::agent::AgentHandle;
+use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{ChatSummary, Config, ListenTarget, Status};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
@@ -16,14 +17,19 @@ pub struct AppState {
     pub agent: Option<AgentHandle>,
     pub listen_targets: Vec<ListenTarget>,
     pub recent_chats: Vec<ChatSummary>,
-    pub pending_chats_list: Option<oneshot::Sender<Vec<ChatSummary>>>,
+    pub pending_chats_list: Option<(String, oneshot::Sender<Vec<ChatSummary>>)>,
     conversations: HashMap<String, Vec<ChatMessage>>,
     last_message_keys: HashMap<String, String>,
 }
 
 impl AppState {
-    pub fn new(config: Config, status: Status) -> Self {
-        let listen_targets = config.listen_targets.clone();
+    pub fn new(mut config: Config, status: Status) -> Self {
+        let listen_targets = normalize_listen_targets(
+            config.listen_targets.clone(),
+            MAX_LISTEN_TARGETS,
+        )
+        .unwrap_or_default();
+        config.listen_targets = listen_targets.clone();
         Self {
             config,
             status,

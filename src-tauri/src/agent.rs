@@ -253,8 +253,14 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
             Ok(payload) => {
                 let sender = {
                     let mut guard = state.lock().await;
+                    let Some((pending_id, _)) = guard.pending_chats_list.as_ref() else {
+                        return;
+                    };
+                    if pending_id != &payload.request_id {
+                        return;
+                    }
                     guard.recent_chats = payload.chats.clone();
-                    guard.pending_chats_list.take()
+                    guard.pending_chats_list.take().map(|(_, sender)| sender)
                 };
                 if let Some(sender) = sender {
                     let _ = sender.send(payload.chats);
