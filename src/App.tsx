@@ -65,6 +65,7 @@ function App() {
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [lastChatId, setLastChatId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [listenModalOpen, setListenModalOpen] = useState(false);
   const [listenTargets, setListenTargets] = useState<ListenTarget[]>([]);
   const [listenInput, setListenInput] = useState("");
   const [listenKind, setListenKind] = useState<ListenTargetKind>("unknown");
@@ -144,11 +145,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!settingsOpen) {
+    if (!listenModalOpen) {
       return;
     }
     void refreshRecentChats();
-  }, [settingsOpen, refreshRecentChats]);
+  }, [listenModalOpen, refreshRecentChats]);
 
   const saveListenTargets = useCallback(
     async (targets: ListenTarget[], showToast: boolean) => {
@@ -227,7 +228,7 @@ function App() {
   const handleStart = useCallback(async () => {
     if (listenTargets.length === 0) {
       message.warning("请先选择监听对象");
-      setSettingsOpen(true);
+      setListenModalOpen(true);
       return;
     }
     if (listenDirty) {
@@ -408,6 +409,9 @@ function App() {
           </button>
         </div>
         <div className="top-actions">
+          <button className="ghost" onClick={() => setListenModalOpen(true)}>
+            监听对象
+          </button>
           <button
             className="ghost icon-button"
             onClick={() => setSettingsOpen(true)}
@@ -466,73 +470,96 @@ function App() {
           },
         }}
       >
-        <div className="panel settings">
-          <div className="panel-header">
-            <h2>API 密钥</h2>
-            <span>{getApiKeyStatusLabel(apiKeyStatus)}</span>
-          </div>
-          <div className="api-key">
-            <input
-              type={getApiKeyInputType(apiKeyVisible)}
-              placeholder="sk-..."
-              value={apiKeyInput}
-              onChange={(event) => setApiKeyInput(event.target.value)}
-            />
-            <button
-              className="ghost api-key-toggle"
-              onClick={() => setApiKeyVisible((prev) => !prev)}
-            >
-              {getApiKeyToggleLabel(apiKeyVisible)}
-            </button>
-            <button onClick={handleSaveApiKey} disabled={apiKeyStatus === "connecting"}>
-              保存并连接
-            </button>
-            <button className="ghost" onClick={handleDiagnose} disabled={diagnosing}>
-              {diagnosing ? "诊断中..." : "连接诊断"}
-            </button>
-            {apiKeySet ? (
-              <button className="ghost" onClick={handleDeleteApiKey}>
-                删除密钥
-              </button>
-            ) : null}
-            {apiKeyError ? <p className="api-error">{apiKeyError}</p> : null}
-            {(diagnostics || diagnosticsError) && diagnosticsSummary ? (
-              <div className="diagnostics">
-                <p>{diagnosticsSummary.message}</p>
-                <ul>
-                  {diagnostics ? <li>Base URL：{diagnostics.base_url}</li> : null}
-                  {diagnostics ? <li>模型：{diagnostics.model}</li> : null}
-                  {diagnosticsSummary.lines.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
+        <div className="settings-grid">
+          <div className="panel settings">
+            <div className="panel-header">
+              <h2>API 密钥</h2>
+              <span>{getApiKeyStatusLabel(apiKeyStatus)}</span>
+            </div>
+            <div className="api-key">
+              <input
+                type={getApiKeyInputType(apiKeyVisible)}
+                placeholder="sk-..."
+                value={apiKeyInput}
+                onChange={(event) => setApiKeyInput(event.target.value)}
+              />
+              <div className="inline-actions">
+                <button
+                  className="ghost api-key-toggle"
+                  onClick={() => setApiKeyVisible((prev) => !prev)}
+                >
+                  {getApiKeyToggleLabel(apiKeyVisible)}
+                </button>
+                <button
+                  onClick={handleSaveApiKey}
+                  disabled={apiKeyStatus === "connecting"}
+                >
+                  保存并连接
+                </button>
+                <button className="ghost" onClick={handleDiagnose} disabled={diagnosing}>
+                  {diagnosing ? "诊断中..." : "连接诊断"}
+                </button>
+                {apiKeySet ? (
+                  <button className="ghost" onClick={handleDeleteApiKey}>
+                    删除密钥
+                  </button>
+                ) : null}
               </div>
-            ) : null}
+              {apiKeyError ? <p className="api-error">{apiKeyError}</p> : null}
+              {(diagnostics || diagnosticsError) && diagnosticsSummary ? (
+                <div className="diagnostics">
+                  <p>{diagnosticsSummary.message}</p>
+                  <ul>
+                    {diagnostics ? <li>Base URL：{diagnostics.base_url}</li> : null}
+                    {diagnostics ? <li>模型：{diagnostics.model}</li> : null}
+                    {diagnosticsSummary.lines.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="panel settings">
+            <div className="panel-header">
+              <h2>模型</h2>
+              <span>{modelLoading ? "获取中" : "自动获取"}</span>
+            </div>
+            <div className="model-select">
+              <select
+                value={selectedModel}
+                onChange={handleModelChange}
+                disabled={modelLoading}
+              >
+                {models.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+              <p>保存密钥后将刷新模型列表</p>
+            </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        title="监听对象"
+        open={listenModalOpen}
+        onCancel={() => setListenModalOpen(false)}
+        footer={null}
+        width={760}
+        style={{ top: 24 }}
+        styles={{
+          body: {
+            maxHeight: "calc(100vh - 180px)",
+            overflowY: "auto",
+          },
+        }}
+      >
         <div className="panel settings">
           <div className="panel-header">
-            <h2>模型</h2>
-            <span>{modelLoading ? "获取中" : "自动获取"}</span>
-          </div>
-          <div className="model-select">
-            <select
-              value={selectedModel}
-              onChange={handleModelChange}
-              disabled={modelLoading}
-            >
-              {models.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-            <p>保存密钥后将刷新模型列表</p>
-          </div>
-        </div>
-        <div className="panel settings">
-          <div className="panel-header">
-            <h2>监听对象</h2>
+            <h2>监听对象列表</h2>
             <span>
               {listenTargets.length}/{MAX_LISTEN_TARGETS}
             </span>

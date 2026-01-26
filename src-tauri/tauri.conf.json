@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "WeReply",
-        "width": 720,
-        "height": 520
+        "width": 680,
+        "height": 920
       }
     ],
     "security": {
