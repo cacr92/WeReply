@@ -20,6 +20,14 @@ import {
   normalizeModels,
   resolveModelSelection,
 } from "./utils/models";
+import {
+  ListenTarget,
+  ListenTargetKind,
+  MAX_LISTEN_TARGETS,
+  mergeListenTargets,
+  normalizeListenTargetList,
+  normalizeListenTargets,
+} from "./utils/listenTargets";
 import { normalizeReplyText } from "./utils/reply";
 import { createStatusState, statusReducer } from "./utils/status";
 
@@ -28,6 +36,18 @@ const DEFAULT_STATUS: Status = {
   platform: "unknown",
   agent_connected: false,
   last_error: "",
+};
+
+type RecentChat = {
+  chat_id: string;
+  chat_title: string;
+  kind: ListenTargetKind;
+};
+
+const LISTEN_KIND_LABELS: Record<ListenTargetKind, string> = {
+  direct: "私聊",
+  group: "群聊",
+  unknown: "未知",
 };
 
 function App() {
@@ -45,6 +65,12 @@ function App() {
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [lastChatId, setLastChatId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [listenTargets, setListenTargets] = useState<ListenTarget[]>([]);
+  const [listenInput, setListenInput] = useState("");
+  const [listenKind, setListenKind] = useState<ListenTargetKind>("unknown");
+  const [listenDirty, setListenDirty] = useState(false);
+  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
   const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -55,10 +81,11 @@ function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [statusRes, keyRes, configRes] = await Promise.all([
+      const [statusRes, keyRes, configRes, targetsRes] = await Promise.all([
         commands.getStatus(),
         commands.getApiKeyStatus(),
         commands.getConfig(),
+        commands.getListenTargets(),
       ]);
       if (statusRes.success && statusRes.data) {
         dispatchStatus({ type: "bootstrap", status: statusRes.data });
@@ -69,6 +96,11 @@ function App() {
       }
       if (configRes.success && configRes.data?.deepseek_model) {
         setSelectedModel(configRes.data.deepseek_model);
+      }
+      if (targetsRes.success && Array.isArray(targetsRes.data)) {
+        const normalized = normalizeListenTargetList(targetsRes.data);
+        setListenTargets(normalized);
+        setListenDirty(false);
       }
     };
     void bootstrap();
@@ -96,7 +128,114 @@ function App() {
     };
   }, []);
 
+  const refreshRecentChats = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const res = await commands.listRecentChats();
+      if (res.success && Array.isArray(res.data)) {
+        setRecentChats(res.data as RecentChat[]);
+      } else {
+        message.error(res.message || "会话列表获取失败");
+      }
+    } catch (err) {
+      message.error("会话列表获取失败");
+    }
+    setRecentLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      return;
+    }
+    void refreshRecentChats();
+  }, [settingsOpen, refreshRecentChats]);
+
+  const saveListenTargets = useCallback(
+    async (targets: ListenTarget[], showToast: boolean) => {
+      const normalized = normalizeListenTargetList(targets);
+      if (normalized.length > MAX_LISTEN_TARGETS) {
+        message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
+        return false;
+      }
+      const res = await commands.setListenTargets(normalized);
+      if (res.success) {
+        setListenTargets(normalized);
+        setListenDirty(false);
+        if (showToast) {
+          message.success("监听对象已保存");
+        }
+        return true;
+      }
+      message.error(res.message || "监听对象保存失败");
+      return false;
+    },
+    [setListenTargets, setListenDirty],
+  );
+
+  const handleAddManualTarget = useCallback(() => {
+    const additions = normalizeListenTargets([listenInput], listenKind);
+    if (additions.length === 0) {
+      message.warning("请输入联系人或群名称");
+      return;
+    }
+    const merged = mergeListenTargets(listenTargets, additions);
+    if (merged.length === listenTargets.length) {
+      message.info("已在监听列表中");
+      return;
+    }
+    if (merged.length > MAX_LISTEN_TARGETS) {
+      message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
+      return;
+    }
+    setListenTargets(merged);
+    setListenInput("");
+    setListenDirty(true);
+  }, [listenInput, listenKind, listenTargets]);
+
+  const handleAddRecentTarget = useCallback(
+    (chat: RecentChat) => {
+      const name = chat.chat_title.trim() || chat.chat_id.trim();
+      if (!name) {
+        return;
+      }
+      const merged = mergeListenTargets(listenTargets, [
+        { name, kind: chat.kind },
+      ]);
+      if (merged.length === listenTargets.length) {
+        message.info("已在监听列表中");
+        return;
+      }
+      if (merged.length > MAX_LISTEN_TARGETS) {
+        message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
+        return;
+      }
+      setListenTargets(merged);
+      setListenDirty(true);
+    },
+    [listenTargets],
+  );
+
+  const handleRemoveTarget = useCallback((name: string) => {
+    setListenTargets((prev) => prev.filter((item) => item.name !== name));
+    setListenDirty(true);
+  }, []);
+
+  const handleSaveTargets = useCallback(async () => {
+    void saveListenTargets(listenTargets, true);
+  }, [listenTargets, saveListenTargets]);
+
   const handleStart = useCallback(async () => {
+    if (listenTargets.length === 0) {
+      message.warning("请先选择监听对象");
+      setSettingsOpen(true);
+      return;
+    }
+    if (listenDirty) {
+      const saved = await saveListenTargets(listenTargets, false);
+      if (!saved) {
+        return;
+      }
+    }
     const res = await commands.startListening();
     if (res.success) {
       dispatchStatus({ type: "optimistic", state: "listening", last_error: "" });
@@ -104,7 +243,7 @@ function App() {
     } else {
       message.error(res.message || "启动失败");
     }
-  }, []);
+  }, [listenDirty, listenTargets, saveListenTargets, setSettingsOpen]);
 
   const handleStop = useCallback(async () => {
     const res = await commands.stopListening();
@@ -389,6 +528,114 @@ function App() {
               ))}
             </select>
             <p>保存密钥后将刷新模型列表</p>
+          </div>
+        </div>
+        <div className="panel settings">
+          <div className="panel-header">
+            <h2>监听对象</h2>
+            <span>
+              {listenTargets.length}/{MAX_LISTEN_TARGETS}
+            </span>
+          </div>
+          <div className="listen-targets">
+            <div className="listen-row">
+              <input
+                type="text"
+                placeholder="输入联系人或群名"
+                value={listenInput}
+                onChange={(event) => setListenInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddManualTarget();
+                  }
+                }}
+              />
+              <select
+                value={listenKind}
+                onChange={(event) =>
+                  setListenKind(event.target.value as ListenTargetKind)
+                }
+              >
+                <option value="unknown">未知</option>
+                <option value="direct">私聊</option>
+                <option value="group">群聊</option>
+              </select>
+              <button className="small" onClick={handleAddManualTarget}>
+                添加
+              </button>
+              <button
+                className="ghost small"
+                onClick={refreshRecentChats}
+                disabled={recentLoading}
+              >
+                {recentLoading ? "刷新中..." : "刷新会话"}
+              </button>
+              <button
+                className="small"
+                onClick={handleSaveTargets}
+                disabled={!listenDirty}
+              >
+                保存
+              </button>
+            </div>
+            <div className="listen-columns">
+              <div>
+                <div className="listen-subtitle">已选择</div>
+                {listenTargets.length === 0 ? (
+                  <div className="empty">未选择任何对象</div>
+                ) : (
+                  <div className="listen-list">
+                    {listenTargets.map((target) => (
+                      <div className="listen-item" key={target.name}>
+                        <div className="listen-meta">
+                          <span className="listen-name">{target.name}</span>
+                          <span className="listen-kind">
+                            {LISTEN_KIND_LABELS[target.kind]}
+                          </span>
+                        </div>
+                        <button
+                          className="ghost small"
+                          onClick={() => handleRemoveTarget(target.name)}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="listen-subtitle">最近会话</div>
+                {recentLoading ? (
+                  <div className="empty">加载中...</div>
+                ) : recentChats.length === 0 ? (
+                  <div className="empty">暂无会话</div>
+                ) : (
+                  <div className="listen-list">
+                    {recentChats.map((chat) => (
+                      <div
+                        className="listen-item"
+                        key={`${chat.chat_id}-${chat.chat_title}`}
+                      >
+                        <div className="listen-meta">
+                          <span className="listen-name">{chat.chat_title}</span>
+                          <span className="listen-kind">
+                            {LISTEN_KIND_LABELS[chat.kind]}
+                          </span>
+                        </div>
+                        <button
+                          className="ghost small"
+                          onClick={() => handleAddRecentTarget(chat)}
+                        >
+                          添加
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </Modal>
