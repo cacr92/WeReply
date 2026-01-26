@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 
 VENDOR_ROOT = os.path.join(os.path.dirname(__file__), "vendor", "wxauto")
 if os.path.isdir(VENDOR_ROOT) and VENDOR_ROOT not in sys.path:
@@ -21,6 +21,7 @@ except Exception:
 ACK_TIMEOUT_SECONDS = 3
 MAX_ACK_RETRIES = 3
 DEFAULT_POLL_INTERVAL = 0.8
+LISTEN_TARGET_KINDS = {"direct", "group", "unknown"}
 
 
 @dataclass
@@ -38,15 +39,38 @@ class AgentState:
     pending: Dict[str, PendingMessage] = field(default_factory=dict)
     wx: Optional[Any] = None
     wechat_ready: bool = False
+    listen_targets: Dict[str, str] = field(default_factory=dict)
+    active_targets: Dict[str, str] = field(default_factory=dict)
+    active_kinds: Dict[str, str] = field(default_factory=dict)
 
 
 STATE = AgentState()
 COMMAND_QUEUE: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+MESSAGE_QUEUE: "queue.Queue[Tuple[Any, Any, str]]" = queue.Queue()
 
 
 def send_json(message: Dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def normalize_listen_targets(raw_targets: Any) -> List[Dict[str, str]]:
+    if not isinstance(raw_targets, list):
+        return []
+    normalized: List[Dict[str, str]] = []
+    seen = set()
+    for item in raw_targets:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if not name or name in seen:
+            continue
+        kind = str(item.get("kind", "unknown")).strip().lower()
+        if kind not in LISTEN_TARGET_KINDS:
+            kind = "unknown"
+        seen.add(name)
+        normalized.append({"name": name, "kind": kind})
+    return normalized
 
 
 def select_wechat_main_hwnd(
@@ -178,11 +202,11 @@ def extract_message_text(message: Any) -> str:
 
 def extract_sender_name(message: Any) -> str:
     if isinstance(message, dict):
-        for key in ("sender", "name", "from"):
+        for key in ("sender_remark", "sender", "name", "from"):
             value = message.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
-    for attr in ("sender", "name", "from_user"):
+    for attr in ("sender_remark", "sender", "name", "from_user"):
         value = getattr(message, attr, None)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -192,56 +216,155 @@ def extract_sender_name(message: Any) -> str:
 def extract_msg_id(message: Any) -> Optional[str]:
     if isinstance(message, dict):
         value = message.get("msg_id") or message.get("id")
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    value = getattr(message, "msg_id", None)
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    for attr in ("msg_id", "id"):
+        value = getattr(message, attr, None)
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
     return None
 
 
-def poll_messages() -> None:
+def resolve_chat_title(chat: Any, fallback: str) -> str:
     try:
-        wx = ensure_wechat()
-    except Exception as exc:
-        emit_error("LISTEN_FAILED", str(exc), True)
-        STATE.listening = False
-        emit_status("error", "listen initialization failed")
-        return
+        info = chat.ChatInfo()
+        if isinstance(info, dict):
+            title = info.get("chat_name") or info.get("chat_remark")
+            if isinstance(title, str) and title.strip():
+                return title.strip()
+    except Exception:
+        pass
+    return fallback
 
+
+def resolve_is_group(chat: Any, kind: str) -> bool:
+    if kind == "group":
+        return True
+    if kind == "direct":
+        return False
     try:
-        messages = wx.GetAllMessage()
-    except Exception as exc:
-        emit_error("LISTEN_FAILED", f"fetch messages failed: {exc}", True)
-        return
+        info = chat.ChatInfo()
+        if isinstance(info, dict):
+            return info.get("chat_type") == "group"
+    except Exception:
+        pass
+    return False
 
-    if not messages:
-        return
 
-    chat_title = get_current_chat_title(wx)
-    latest = messages[-1]
-    text = extract_message_text(latest)
+def listen_callback(message: Any, chat: Any) -> None:
+    if not STATE.listening:
+        return
+    chat_name = getattr(chat, "who", None) or str(chat)
+    if not chat_name:
+        chat_name = "unknown-chat"
+    MESSAGE_QUEUE.put((message, chat, chat_name))
+
+
+def handle_incoming_message(message: Any, chat: Any, chat_name: str) -> None:
+    text = extract_message_text(message)
     if not text:
         return
-
-    timestamp = int(time.time())
-    msg_id = extract_msg_id(latest)
-    key = msg_id or f"{text}:{timestamp}"
-    if STATE.last_message_keys.get(chat_title) == key:
+    msg_id = extract_msg_id(message)
+    msg_hash = getattr(message, "hash", None)
+    key = msg_id or (str(msg_hash) if msg_hash else f"{extract_sender_name(message)}:{text}")
+    if STATE.last_message_keys.get(chat_name) == key:
         return
-    STATE.last_message_keys[chat_title] = key
+    STATE.last_message_keys[chat_name] = key
 
-    sender = extract_sender_name(latest) or chat_title
+    kind = STATE.active_kinds.get(chat_name, "unknown")
+    chat_title = resolve_chat_title(chat, chat_name)
     payload = {
         "chat_id": chat_title,
         "chat_title": chat_title,
-        "is_group": False,
-        "sender_name": sender,
+        "is_group": resolve_is_group(chat, kind),
+        "sender_name": extract_sender_name(message) or chat_title,
         "text": text,
-        "timestamp": timestamp,
+        "timestamp": int(time.time()),
         "msg_id": msg_id,
     }
     send_with_ack("message.new", payload)
+
+
+def drain_message_queue(max_items: int = 50) -> None:
+    for _ in range(max_items):
+        try:
+            message, chat, chat_name = MESSAGE_QUEUE.get_nowait()
+        except queue.Empty:
+            break
+        handle_incoming_message(message, chat, chat_name)
+
+
+def try_ensure_wechat() -> Optional[Any]:
+    try:
+        return ensure_wechat()
+    except Exception as exc:
+        emit_error("LISTEN_FAILED", str(exc), True)
+        return None
+
+
+def clear_message_queue() -> None:
+    while True:
+        try:
+            MESSAGE_QUEUE.get_nowait()
+        except queue.Empty:
+            break
+
+
+def clear_active_listeners(wx: Optional[Any]) -> None:
+    if wx is not None:
+        for actual in list(STATE.active_targets.values()):
+            try:
+                wx.RemoveListenChat(actual, close_window=True)
+            except Exception:
+                pass
+    STATE.active_targets.clear()
+    STATE.active_kinds.clear()
+
+
+def reconcile_listeners(desired: Dict[str, str], allow_add: bool) -> None:
+    wx = STATE.wx or try_ensure_wechat()
+    if wx is None:
+        return
+
+    for target_name in list(STATE.active_targets.keys()):
+        if target_name in desired:
+            continue
+        actual = STATE.active_targets.pop(target_name, None)
+        if actual:
+            STATE.active_kinds.pop(actual, None)
+            try:
+                wx.RemoveListenChat(actual, close_window=True)
+            except Exception:
+                pass
+
+    if not allow_add:
+        return
+
+    for target_name, kind in desired.items():
+        if target_name in STATE.active_targets:
+            continue
+        try:
+            result = wx.AddListenChat(target_name, listen_callback)
+        except Exception as exc:
+            emit_error("LISTEN_TARGET_FAILED", f"{target_name}: {exc}", True)
+            continue
+        if not hasattr(result, "ChatInfo"):
+            emit_error("LISTEN_TARGET_FAILED", f"{target_name}: 无法监听该会话", True)
+            continue
+        chat_name = getattr(result, "who", None) or target_name
+        STATE.active_targets[target_name] = chat_name
+        STATE.active_kinds[chat_name] = kind
+
+
+def set_listen_targets(raw_targets: Any, allow_add: bool) -> None:
+    normalized = normalize_listen_targets(raw_targets)
+    desired = {item["name"]: item["kind"] for item in normalized}
+    STATE.listen_targets = desired
+    reconcile_listeners(desired, allow_add)
 
 
 def write_input(chat_id: str, text: str, restore_clipboard: bool) -> None:
@@ -286,6 +409,27 @@ def write_input(chat_id: str, text: str, restore_clipboard: bool) -> None:
                 pass
 
 
+def list_recent_chats() -> List[Dict[str, str]]:
+    wx = STATE.wx or try_ensure_wechat()
+    if wx is None:
+        return []
+    try:
+        sessions = wx.GetSession()
+    except Exception as exc:
+        emit_error("CHAT_LIST_FAILED", str(exc), True)
+        return []
+    results: List[Dict[str, str]] = []
+    for session in sessions or []:
+        name = getattr(session, "name", None)
+        if not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name:
+            continue
+        results.append({"chat_id": name, "chat_title": name, "kind": "unknown"})
+    return results
+
+
 def handle_command(message: Dict[str, Any]) -> None:
     msg_type = message.get("type", "")
     msg_id = message.get("id", "")
@@ -305,17 +449,30 @@ def handle_command(message: Dict[str, Any]) -> None:
         if isinstance(interval, (int, float)) and interval >= 200:
             STATE.poll_interval = max(interval / 1000.0, 0.2)
         STATE.listening = True
+        targets = payload.get("targets")
+        if targets is not None:
+            set_listen_targets(targets, True)
+        else:
+            reconcile_listeners(STATE.listen_targets, True)
         emit_status("listening", "")
         return
 
     if msg_type == "listen.pause":
         STATE.listening = False
+        clear_message_queue()
         emit_status("paused", "")
         return
 
     if msg_type == "listen.stop":
         STATE.listening = False
+        clear_message_queue()
+        clear_active_listeners(STATE.wx)
         emit_status("idle", "")
+        return
+
+    if msg_type == "listen.targets":
+        targets = payload.get("targets")
+        set_listen_targets(targets, STATE.listening)
         return
 
     if msg_type == "input.write":
@@ -326,6 +483,14 @@ def handle_command(message: Dict[str, Any]) -> None:
             send_with_ack("input.result", {"ok": False, "error": "chat_id or text is empty"})
             return
         write_input(chat_id, text, restore)
+        return
+
+    if msg_type == "chats.list":
+        request_id = str(payload.get("request_id", "")).strip()
+        if not request_id:
+            emit_error("CHAT_LIST_FAILED", "request_id missing", True)
+        chats = list_recent_chats()
+        send_with_ack("chats.list.result", {"request_id": request_id, "chats": chats})
         return
 
 
@@ -359,8 +524,8 @@ def main() -> None:
         "agent.ready",
         {
             "platform": "windows",
-            "agent_version": "0.1.0",
-            "capabilities": ["listen", "write"],
+        "agent_version": "0.1.0",
+            "capabilities": ["listen", "write", "chats.list"],
             "supports_clipboard_restore": True,
         },
     )
@@ -368,7 +533,6 @@ def main() -> None:
     reader = threading.Thread(target=read_stdin, daemon=True)
     reader.start()
 
-    last_poll = 0.0
     while True:
         try:
             message = COMMAND_QUEUE.get(timeout=0.1)
@@ -376,9 +540,8 @@ def main() -> None:
         except queue.Empty:
             pass
 
-        if STATE.listening and (time.time() - last_poll) >= STATE.poll_interval:
-            poll_messages()
-            last_poll = time.time()
+        if STATE.listening:
+            drain_message_queue()
 
         process_pending()
 
