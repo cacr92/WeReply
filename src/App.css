@@ -448,12 +448,25 @@ button.ghost:hover {
 
 @media (max-width: 720px) {
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
   }
 
-  .top-actions {
-    align-self: flex-end;
+  .control-group {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .topbar .control-group button {
+    height: 38px;
+    padding: 0 16px;
+    font-size: 14px;
+  }
+
+  .topbar .icon-button {
+    width: 38px;
+    height: 38px;
   }
 
   .grid {
