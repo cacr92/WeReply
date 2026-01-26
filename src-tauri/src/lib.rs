@@ -92,6 +92,18 @@ async fn start_listening(
         }
     }
 
+    let (automation, targets) = {
+        let guard = state.lock().await;
+        (guard.automation.clone(), guard.listen_targets.clone())
+    };
+    if automation.is_ready() {
+        let res = automation.start_listening(targets).await;
+        if res.success {
+            set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
+        }
+        return Ok(res);
+    }
+
     if let Err(err) = ensure_agent_running(app.clone(), state.inner().clone()).await {
         warn!("启动 Agent 失败: {}", err);
         return Ok(api_err(err.to_string()));
@@ -114,6 +126,18 @@ async fn stop_listening(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
     info!("收到停止监听请求");
+    let automation = {
+        let guard = state.lock().await;
+        guard.automation.clone()
+    };
+    if automation.is_ready() {
+        let res = automation.stop_listening().await;
+        if res.success {
+            set_runtime_state(&app, state.inner().clone(), RuntimeState::Idle, "").await;
+        }
+        return Ok(res);
+    }
+
     if let Err(err) =
         send_listen_control(state.inner().clone(), "listen.stop", false, false).await
     {
@@ -297,6 +321,15 @@ async fn write_suggestion(
     if text.len() > 2000 {
         warn!("写入建议失败: 回复内容过长");
         return Ok(api_err("回复内容过长"));
+    }
+
+    let automation = {
+        let guard = state.lock().await;
+        guard.automation.clone()
+    };
+    if automation.is_ready() {
+        let res = automation.write_input(chat_id, text).await;
+        return Ok(res);
     }
 
     let guard = state.lock().await;
@@ -568,6 +601,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::ChatKind;
+    use crate::ui_automation::WeChatAutomation;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[tokio::test]
     async fn list_recent_chats_requires_agent() {
@@ -592,5 +628,55 @@ mod tests {
         }
         let result = list_recent_chats_inner(state).await.unwrap();
         assert!(!result.success);
+    }
+
+    #[tokio::test]
+    async fn list_recent_chats_uses_automation() {
+        struct MockAutomation {
+            called: Arc<AtomicBool>,
+        }
+
+        impl WeChatAutomation for MockAutomation {
+            fn platform(&self) -> Platform {
+                Platform::Windows
+            }
+
+            fn list_recent_chats(&self) -> anyhow::Result<Vec<ChatSummary>> {
+                self.called.store(true, Ordering::SeqCst);
+                Ok(vec![ChatSummary {
+                    chat_id: "id".to_string(),
+                    chat_title: "title".to_string(),
+                    kind: ChatKind::Unknown,
+                }])
+            }
+
+            fn start_listening(&self, _targets: Vec<ListenTarget>) -> anyhow::Result<()> {
+                Ok(())
+            }
+
+            fn stop_listening(&self) -> anyhow::Result<()> {
+                Ok(())
+            }
+
+            fn write_input(&self, _chat_id: &str, _text: &str) -> anyhow::Result<()> {
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(Mutex::new(AppState::new(
+            Config::default(),
+            initial_status(),
+        )));
+        let called = Arc::new(AtomicBool::new(false));
+        {
+            let mut guard = state.lock().await;
+            guard.automation =
+                crate::ui_automation::AutomationManager::new(Some(Arc::new(MockAutomation {
+                    called: Arc::clone(&called),
+                })));
+        }
+        let result = list_recent_chats_inner(state).await.unwrap();
+        assert!(result.success);
+        assert!(called.load(Ordering::SeqCst));
     }
 }

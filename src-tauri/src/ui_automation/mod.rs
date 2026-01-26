@@ -41,6 +41,42 @@ impl AutomationManager {
             Err(err) => api_err(format!("Automation task failed: {}", err)),
         }
     }
+
+    pub async fn start_listening(&self, targets: Vec<ListenTarget>) -> ApiResponse<()> {
+        let Some(automation) = self.inner.as_ref() else {
+            return api_err("Automation not ready");
+        };
+        let automation = Arc::clone(automation);
+        match spawn_blocking(move || automation.start_listening(targets)).await {
+            Ok(Ok(())) => api_ok(()),
+            Ok(Err(err)) => api_err(err.to_string()),
+            Err(err) => api_err(format!("Automation task failed: {}", err)),
+        }
+    }
+
+    pub async fn stop_listening(&self) -> ApiResponse<()> {
+        let Some(automation) = self.inner.as_ref() else {
+            return api_err("Automation not ready");
+        };
+        let automation = Arc::clone(automation);
+        match spawn_blocking(move || automation.stop_listening()).await {
+            Ok(Ok(())) => api_ok(()),
+            Ok(Err(err)) => api_err(err.to_string()),
+            Err(err) => api_err(format!("Automation task failed: {}", err)),
+        }
+    }
+
+    pub async fn write_input(&self, chat_id: String, text: String) -> ApiResponse<()> {
+        let Some(automation) = self.inner.as_ref() else {
+            return api_err("Automation not ready");
+        };
+        let automation = Arc::clone(automation);
+        match spawn_blocking(move || automation.write_input(&chat_id, &text)).await {
+            Ok(Ok(())) => api_ok(()),
+            Ok(Err(err)) => api_err(err.to_string()),
+            Err(err) => api_err(format!("Automation task failed: {}", err)),
+        }
+    }
 }
 
 #[cfg(test)]
