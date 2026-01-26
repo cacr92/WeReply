@@ -36,7 +36,7 @@ impl AppState {
             config,
             status,
             agent: None,
-            automation: AutomationManager::new(None),
+            automation: AutomationManager::new(None), // Set by platform automation init.
             listen_targets,
             recent_chats: Vec::new(),
             pending_chats_list: None,

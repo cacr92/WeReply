@@ -3,6 +3,7 @@ pub mod types;
 use crate::types::{api_err, api_ok, ApiResponse};
 use anyhow::Result;
 use std::sync::Arc;
+use tokio::task::spawn_blocking;
 pub use types::{ChatSummary, ListenTarget, Platform};
 
 pub trait WeChatAutomation {
@@ -31,9 +32,11 @@ impl AutomationManager {
         let Some(automation) = self.inner.as_ref() else {
             return api_err("Automation not ready");
         };
-        match automation.list_recent_chats() {
-            Ok(chats) => api_ok(chats),
-            Err(err) => api_err(err.to_string()),
+        let automation = Arc::clone(automation);
+        match spawn_blocking(move || automation.list_recent_chats()).await {
+            Ok(Ok(chats)) => api_ok(chats),
+            Ok(Err(err)) => api_err(err.to_string()),
+            Err(err) => api_err(format!("Automation task failed: {}", err)),
         }
     }
 }
