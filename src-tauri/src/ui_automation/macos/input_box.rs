@@ -30,3 +30,31 @@ impl MockAxInputWriter {
         self.used_clipboard
     }
 }
+
+#[cfg(target_os = "macos")]
+pub mod ax {
+    use crate::ui_automation::macos::ax::{self, AxElement};
+    use anyhow::{anyhow, Result};
+
+    pub struct AxInputWriter {
+        window: AxElement,
+    }
+
+    impl AxInputWriter {
+        pub fn new(window: &AxElement) -> Self {
+            Self {
+                window: window.clone(),
+            }
+        }
+
+        pub fn write(&self, text: &str) -> Result<()> {
+            let input = ax::find_input_element(&self.window, 8)
+                .ok_or_else(|| anyhow!("Input box not found"))?;
+            if ax::set_input_value(&input, text).is_ok() {
+                return Ok(());
+            }
+            ax::focus_element(&input).ok();
+            ax::paste_text(text)
+        }
+    }
+}

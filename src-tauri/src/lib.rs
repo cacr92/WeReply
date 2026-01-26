@@ -5,6 +5,7 @@ mod deepseek;
 mod ipc;
 mod listen_targets;
 mod logging;
+mod message_pipeline;
 mod secret;
 mod state;
 mod types;
@@ -15,6 +16,7 @@ use crate::config::load_config;
 use crate::config::save_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
+use crate::ui_automation::build_platform_automation;
 use crate::ipc::{
     ChatsListPayload, InputWritePayload, IpcEnvelope, ListenControlPayload, ListenTargetsPayload,
 };
@@ -25,7 +27,7 @@ use crate::types::{
 };
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, State};
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{Mutex, oneshot, watch};
 use tokio::time::{timeout, Duration};
 use uuid::Uuid;
 use tracing::{info, warn};
@@ -99,6 +101,7 @@ async fn start_listening(
     if automation.is_ready() {
         let res = automation.start_listening(targets).await;
         if res.success {
+            start_automation_polling(app.clone(), state.inner().clone()).await;
             set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
         }
         return Ok(res);
@@ -133,6 +136,7 @@ async fn stop_listening(
     if automation.is_ready() {
         let res = automation.stop_listening().await;
         if res.success {
+            stop_automation_polling(state.inner().clone()).await;
             set_runtime_state(&app, state.inner().clone(), RuntimeState::Idle, "").await;
         }
         return Ok(res);
@@ -156,6 +160,16 @@ async fn pause_listening(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
     info!("收到暂停监听请求");
+    let automation = {
+        let guard = state.lock().await;
+        guard.automation.clone()
+    };
+    if automation.is_ready() {
+        stop_automation_polling(state.inner().clone()).await;
+        set_runtime_state(&app, state.inner().clone(), RuntimeState::Paused, "").await;
+        info!("监听已暂停");
+        return Ok(api_ok(()));
+    }
     if let Err(err) =
         send_listen_control(state.inner().clone(), "listen.pause", false, false).await
     {
@@ -180,6 +194,22 @@ async fn resume_listening(
             warn!("未设置监听对象，拒绝恢复监听");
             return Ok(api_err("请先设置监听对象"));
         }
+    }
+    let automation = {
+        let guard = state.lock().await;
+        guard.automation.clone()
+    };
+    if automation.is_ready() {
+        let targets = {
+            let guard = state.lock().await;
+            guard.listen_targets.clone()
+        };
+        let res = automation.start_listening(targets).await;
+        if res.success {
+            start_automation_polling(app.clone(), state.inner().clone()).await;
+            set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
+        }
+        return Ok(res);
     }
     if let Err(err) =
         send_listen_control(state.inner().clone(), "listen.resume", true, true).await
@@ -256,7 +286,14 @@ async fn list_recent_chats_inner(
         guard.automation.clone()
     };
     if automation.is_ready() {
-        return Ok(automation.list_recent_chats().await);
+        let res = automation.list_recent_chats().await;
+        if res.success {
+            if let Some(chats) = res.data.clone() {
+                let mut guard = state.lock().await;
+                guard.recent_chats = chats;
+            }
+        }
+        return Ok(res);
     }
 
     let request_id = Uuid::new_v4().to_string();
@@ -522,6 +559,83 @@ async fn set_runtime_state(
     let _ = app.emit("status.changed", guard.status.clone());
 }
 
+async fn start_automation_polling(app: AppHandle, state: SharedState) {
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+    let (automation, config, targets) = {
+        let mut guard = state.lock().await;
+        if let Some(stop) = guard.automation_stop.take() {
+            let _ = stop.send(true);
+        }
+        guard.automation_stop = Some(stop_tx);
+        (
+            guard.automation.clone(),
+            guard.config.clone(),
+            guard.listen_targets.clone(),
+        )
+    };
+    if !automation.is_ready() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(config.poll_interval_ms));
+        loop {
+            tokio::select! {
+                _ = stop_rx.changed() => {
+                    if *stop_rx.borrow() {
+                        break;
+                    }
+                }
+                _ = interval.tick() => {
+                    let res = automation.poll_latest_message().await;
+                    if !res.success {
+                        continue;
+                    }
+                    let Some(message) = res.data.flatten() else {
+                        continue;
+                    };
+                    if !should_handle_message(&message.chat_id, &targets) {
+                        continue;
+                    }
+                    let payload = crate::ipc::MessageNewPayload {
+                        chat_id: message.chat_id.clone(),
+                        chat_title: message.chat_id.clone(),
+                        is_group: infer_is_group(&message.chat_id, &targets),
+                        sender_name: String::new(),
+                        text: message.text.clone(),
+                        timestamp: message.timestamp,
+                        msg_id: message.msg_id.clone(),
+                    };
+                    crate::message_pipeline::handle_incoming_message(&app, &state, payload).await;
+                }
+            }
+        }
+    });
+}
+
+async fn stop_automation_polling(state: SharedState) {
+    let stop = {
+        let mut guard = state.lock().await;
+        guard.automation_stop.take()
+    };
+    if let Some(stop) = stop {
+        let _ = stop.send(true);
+    }
+}
+
+fn should_handle_message(chat_id: &str, targets: &[ListenTarget]) -> bool {
+    if targets.is_empty() {
+        return true;
+    }
+    targets.iter().any(|target| target.name == chat_id)
+}
+
+fn infer_is_group(chat_id: &str, targets: &[ListenTarget]) -> bool {
+    if let Some(target) = targets.iter().find(|target| target.name == chat_id) {
+        return matches!(target.kind, crate::types::ChatKind::Group);
+    }
+    chat_id.contains("\u7fa4")
+}
+
 fn initial_status() -> Status {
     let platform = if cfg!(target_os = "windows") {
         Platform::Windows
@@ -569,7 +683,10 @@ pub fn run() {
         .setup(|app| {
             let config = load_config(app.handle())?;
             logging::init_logging(app.handle(), &config)?;
-            let state = Arc::new(Mutex::new(AppState::new(config, initial_status())));
+            let mut app_state = AppState::new(config, initial_status());
+            let automation = build_platform_automation();
+            app_state.automation = crate::ui_automation::AutomationManager::new(automation);
+            let state = Arc::new(Mutex::new(app_state));
             app.manage(state);
             adjust_window_size(app.handle());
             info!("WeReply 启动完成");
@@ -660,6 +777,10 @@ mod tests {
 
             fn write_input(&self, _chat_id: &str, _text: &str) -> anyhow::Result<()> {
                 Ok(())
+            }
+
+            fn poll_latest_message(&self) -> anyhow::Result<Option<crate::ui_automation::IncomingMessage>> {
+                Ok(None)
             }
         }
 

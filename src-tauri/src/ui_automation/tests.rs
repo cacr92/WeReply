@@ -1,5 +1,6 @@
 use super::{AutomationManager, WeChatAutomation};
 use crate::types::ChatSummary;
+use crate::ui_automation::IncomingMessage;
 use std::sync::Arc;
 
 struct MockAutomation;
@@ -27,6 +28,10 @@ impl WeChatAutomation for MockAutomation {
 
     fn write_input(&self, _chat_id: &str, _text: &str) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    fn poll_latest_message(&self) -> anyhow::Result<Option<IncomingMessage>> {
+        Ok(None)
     }
 }
 

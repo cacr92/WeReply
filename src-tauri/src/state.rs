@@ -3,7 +3,7 @@ use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{ChatSummary, Config, ListenTarget, Status};
 use crate::ui_automation::AutomationManager;
 use std::collections::HashMap;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
@@ -17,6 +17,7 @@ pub struct AppState {
     pub status: Status,
     pub agent: Option<AgentHandle>,
     pub automation: AutomationManager,
+    pub automation_stop: Option<watch::Sender<bool>>,
     pub listen_targets: Vec<ListenTarget>,
     pub recent_chats: Vec<ChatSummary>,
     pub pending_chats_list: Option<(String, oneshot::Sender<Vec<ChatSummary>>)>,
@@ -37,6 +38,7 @@ impl AppState {
             status,
             agent: None,
             automation: AutomationManager::new(None), // Set by platform automation init.
+            automation_stop: None,
             listen_targets,
             recent_chats: Vec::new(),
             pending_chats_list: None,

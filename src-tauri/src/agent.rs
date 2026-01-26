@@ -1,11 +1,10 @@
-use crate::deepseek;
 use crate::ipc::{
     parse_envelope, AgentErrorPayload, AgentReadyPayload, AgentStatusPayload, ChatsListResultPayload,
-    IpcEnvelope, InputResultPayload, MessageNewPayload, validate_message_new,
+    IpcEnvelope, InputResultPayload, MessageNewPayload,
 };
-use crate::secret::ApiKeyManager;
-use crate::state::{AppState, ChatMessage};
-use crate::types::{ErrorPayload, Platform, RuntimeState, SuggestionsUpdated};
+use crate::message_pipeline::handle_incoming_message;
+use crate::state::AppState;
+use crate::types::{ErrorPayload, Platform, RuntimeState};
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -201,51 +200,7 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
         }
         "message.new" => {
             if let Ok(payload) = serde_json::from_value::<MessageNewPayload>(envelope.payload) {
-                if let Err(err) = validate_message_new(&payload) {
-                    warn!("消息验证失败: {}", err);
-                    return;
-                }
-                if is_duplicate_message(state, &payload).await {
-                    return;
-                }
-                record_message(state, &payload).await;
-                info!("收到新消息，生成回复建议");
-                update_state(state, app, RuntimeState::Generating, "").await;
-                let context = {
-                    let guard = state.lock().await;
-                    guard.context_for_chat(&payload.chat_id)
-                };
-                let config = {
-                    let guard = state.lock().await;
-                    guard.config.clone()
-                };
-                let app_handle = app.clone();
-                let state_handle = state.clone();
-                tokio::spawn(async move {
-                    let api_key = ApiKeyManager::get_deepseek_api_key().ok();
-                    let suggestions = deepseek::generate_suggestions(&config, api_key, &context)
-                        .await
-                        .unwrap_or_else(|_| Vec::new());
-                    if suggestions.is_empty() {
-                        warn!("生成建议为空");
-                        emit_error(
-                            &app_handle,
-                            ErrorPayload {
-                                code: "SUGGESTION_EMPTY".to_string(),
-                                message: "未生成回复建议".to_string(),
-                                recoverable: true,
-                            },
-                        );
-                    } else {
-                        info!("生成建议完成: {} 条", suggestions.len());
-                        let payload = SuggestionsUpdated {
-                            chat_id: payload.chat_id.clone(),
-                            suggestions,
-                        };
-                        let _ = app_handle.emit("suggestions.updated", payload);
-                    }
-                    update_state(&state_handle, &app_handle, RuntimeState::Listening, "").await;
-                });
+                handle_incoming_message(app, state, payload).await;
             }
         }
         "chats.list.result" => match serde_json::from_value::<ChatsListResultPayload>(envelope.payload)
@@ -329,28 +284,6 @@ async fn update_agent_connected(
         guard.agent = None;
     }
     let _ = app.emit("status.changed", guard.status.clone());
-}
-
-async fn is_duplicate_message(state: &Arc<Mutex<AppState>>, payload: &MessageNewPayload) -> bool {
-    let guard = state.lock().await;
-    guard.is_duplicate(
-        &payload.chat_id,
-        &payload.msg_id,
-        &payload.text,
-        payload.timestamp,
-    )
-}
-
-async fn record_message(state: &Arc<Mutex<AppState>>, payload: &MessageNewPayload) {
-    let mut guard = state.lock().await;
-    guard.record_message(
-        &payload.chat_id,
-        ChatMessage {
-            text: payload.text.clone(),
-            timestamp: payload.timestamp,
-            msg_id: payload.msg_id.clone(),
-        },
-    );
 }
 
 fn emit_error(app: &AppHandle, payload: ErrorPayload) {

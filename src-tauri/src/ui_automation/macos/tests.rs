@@ -11,8 +11,8 @@ fn ax_finds_wechat_app() {
 
 #[test]
 fn macos_session_list_dedupes() {
-    let mock = MockAxSessionList::with_sessions(vec!["A", "A", "B"]);
-    let chats = collect_recent_chats(&mock).unwrap();
+    let mut mock = MockAxSessionList::with_pages(vec![vec!["A", "A"], vec!["B"]]);
+    let chats = collect_recent_chats(&mut mock).unwrap();
     assert_eq!(chats.len(), 2);
 }
 

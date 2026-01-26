@@ -36,6 +36,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_ProcessStatus"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+uiautomation = { version = "0.24", features = ["clipboard", "control", "event", "input", "pattern", "process"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 core-foundation = "0.9"

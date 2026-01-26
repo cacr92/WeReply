@@ -10,8 +10,11 @@ fn uia_finds_wechat_main_window_by_process_name() {
 
 #[test]
 fn session_list_scrolls_and_dedupes() {
-    let mock = MockSessionList::with_sessions(vec!["A", "B", "C", "B"]);
-    let chats = collect_recent_chats(&mock).unwrap();
+    let mut mock = MockSessionList::with_pages(vec![
+        vec!["A", "B"],
+        vec!["C", "B"],
+    ]);
+    let chats = collect_recent_chats(&mut mock).unwrap();
     assert_eq!(chats.len(), 3);
 }
 
