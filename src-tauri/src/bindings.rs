@@ -4,8 +4,9 @@ use anyhow::Result;
 use specta::ts::{export, BigIntExportBehavior, ExportConfiguration};
 
 use crate::types::{
-    ApiResponse, Config, DeepseekDiagnostics, DeepseekEndpointStatus, ErrorPayload, Platform,
-    RuntimeState, Status, Suggestion, SuggestionStyle, SuggestionsUpdated,
+    ApiResponse, ChatKind, ChatSummary, Config, DeepseekDiagnostics, DeepseekEndpointStatus,
+    ErrorPayload, ListenTarget, Platform, RuntimeState, Status, Suggestion, SuggestionStyle,
+    SuggestionsUpdated,
 };
 
 fn export_types() -> Result<String> {
@@ -17,6 +18,12 @@ fn export_types() -> Result<String> {
     output.push_str(&export::<SuggestionStyle>(&config)?);
     output.push_str("\n\n");
     output.push_str(&export::<Platform>(&config)?);
+    output.push_str("\n\n");
+    output.push_str(&export::<ChatKind>(&config)?);
+    output.push_str("\n\n");
+    output.push_str(&export::<ListenTarget>(&config)?);
+    output.push_str("\n\n");
+    output.push_str(&export::<ChatSummary>(&config)?);
     output.push_str("\n\n");
     output.push_str(&export::<Suggestion>(&config)?);
     output.push_str("\n\n");
@@ -53,6 +60,15 @@ pub fn export_typescript_bindings(path: &Path) -> Result<()> {
         "  getStatus: (): Promise<ApiResponse<Status>> => invoke(\"get_status\"),\n",
     );
     output.push_str(
+        "  getListenTargets: (): Promise<ApiResponse<ListenTarget[]>> => invoke(\"get_listen_targets\"),\n",
+    );
+    output.push_str(
+        "  setListenTargets: (targets: ListenTarget[]): Promise<ApiResponse<null>> =>\n",
+    );
+    output.push_str(
+        "    invoke(\"set_listen_targets\", { targets }),\n",
+    );
+    output.push_str(
         "  startListening: (): Promise<ApiResponse<null>> => invoke(\"start_listening\"),\n",
     );
     output.push_str("  stopListening: (): Promise<ApiResponse<null>> => invoke(\"stop_listening\"),\n");
@@ -83,6 +99,9 @@ pub fn export_typescript_bindings(path: &Path) -> Result<()> {
     );
     output.push_str(
         "  listModels: (): Promise<ApiResponse<string[]>> => invoke(\"list_models\"),\n",
+    );
+    output.push_str(
+        "  listRecentChats: (): Promise<ApiResponse<ChatSummary[]>> => invoke(\"list_recent_chats\"),\n",
     );
     output.push_str(
         "  setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>\n",
