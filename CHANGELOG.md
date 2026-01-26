@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- 更新 README/CONTRIBUTING，补充实际功能与开发说明。
 - Windows Agent 内置 wxauto 源码并通过 PYTHONPATH 引用，避免运行时安装该依赖。
 - Windows 打包内置嵌入式 Python 3.12，并自动安装 wxauto 等依赖，运行时优先使用内置 Python。
 - Windows Agent 启动前自动安装 Python 依赖（wxauto/pyautogui/pyperclip/comtypes），缺失时自动尝试安装并复检。
