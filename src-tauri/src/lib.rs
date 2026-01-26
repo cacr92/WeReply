@@ -23,7 +23,7 @@ use crate::types::{
     RuntimeState, Status,
 };
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, State};
 use tokio::sync::{Mutex, oneshot};
 use tokio::time::{timeout, Duration};
 use uuid::Uuid;
@@ -496,6 +496,30 @@ fn initial_status() -> Status {
     }
 }
 
+fn adjust_window_size(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        warn!("获取显示器信息失败，跳过窗口尺寸调整");
+        return;
+    };
+    let scale_factor = monitor.scale_factor();
+    let logical_size: LogicalSize<f64> = monitor.size().to_logical(scale_factor);
+    let target_width = (logical_size.width * 0.7).round();
+    let target_height = (logical_size.height * 0.85).round();
+    let width = target_width.clamp(640.0, 1200.0);
+    let height = target_height.clamp(720.0, 900.0);
+    if let Err(err) = window.set_size(Size::Logical(LogicalSize { width, height })) {
+        warn!("窗口尺寸调整失败: {}", err);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -505,6 +529,7 @@ pub fn run() {
             logging::init_logging(app.handle(), &config)?;
             let state = Arc::new(Mutex::new(AppState::new(config, initial_status())));
             app.manage(state);
+            adjust_window_size(app.handle());
             info!("WeReply 启动完成");
             Ok(())
         })
