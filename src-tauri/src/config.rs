@@ -1,5 +1,5 @@
 use crate::deepseek::is_supported_model;
-use crate::types::Config;
+use crate::types::{Config, ListenTarget};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -14,18 +14,23 @@ const CONFIG_FILE: &str = "config.json";
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredConfig {
     deepseek_model: Option<String>,
+    listen_targets: Option<Vec<ListenTarget>>,
 }
 
 impl StoredConfig {
     fn from_config(config: &Config) -> Self {
         Self {
             deepseek_model: Some(config.deepseek_model.clone()),
+            listen_targets: Some(config.listen_targets.clone()),
         }
     }
 
     fn apply(self, config: &mut Config) {
         if let Some(model) = self.deepseek_model {
             config.deepseek_model = model;
+        }
+        if let Some(listen_targets) = self.listen_targets {
+            config.listen_targets = listen_targets;
         }
     }
 }

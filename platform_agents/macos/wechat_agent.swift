@@ -5,6 +5,7 @@ import Foundation
 private let ackTimeout: TimeInterval = 3
 private let maxAckRetries = 3
 private let defaultPollInterval: TimeInterval = 0.8
+private let listenTargetKinds = Set(["direct", "group", "unknown"])
 
 private struct PendingMessage {
     var envelope: [String: Any]
@@ -15,8 +16,10 @@ private struct PendingMessage {
 private final class AgentState {
     var listening = false
     var pollInterval = defaultPollInterval
+    var lastPollAt = Date.distantPast
     var lastMessageKeys: [String: String] = [:]
     var pending: [String: PendingMessage] = [:]
+    var listenTargets: [String: String] = [:]
 }
 
 private let state = AgentState()
@@ -85,6 +88,17 @@ private func weChatApp() -> NSRunningApplication? {
     return nil
 }
 
+private func weChatWindows() -> [AXUIElement] {
+    guard let app = weChatApp() else { return [] }
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
+    if result == .success, let windows = value as? [AXUIElement] {
+        return windows
+    }
+    return []
+}
+
 private func frontmostWeChatWindow() -> AXUIElement? {
     guard let app = weChatApp() else { return nil }
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
@@ -104,9 +118,17 @@ private func elementAttribute(_ element: AXUIElement, _ attribute: CFString) -> 
     return nil
 }
 
+private func elementRole(_ element: AXUIElement) -> String? {
+    return elementAttribute(element, kAXRoleAttribute as CFString) as? String
+}
+
+private func elementChildren(_ element: AXUIElement) -> [AXUIElement] {
+    return elementAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] ?? []
+}
+
 private func collectStaticTexts(from element: AXUIElement, depth: Int, results: inout [String]) {
     guard depth > 0 else { return }
-    if let role = elementAttribute(element, kAXRoleAttribute as CFString) as? String,
+    if let role = elementRole(element),
        role == kAXStaticTextRole as String,
        let value = elementAttribute(element, kAXValueAttribute as CFString) as? String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -114,10 +136,68 @@ private func collectStaticTexts(from element: AXUIElement, depth: Int, results: 
             results.append(trimmed)
         }
     }
-    if let children = elementAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] {
-        for child in children {
-            collectStaticTexts(from: child, depth: depth - 1, results: &results)
+    for child in elementChildren(element) {
+        collectStaticTexts(from: child, depth: depth - 1, results: &results)
+    }
+}
+
+private func firstStaticText(in element: AXUIElement, depth: Int) -> String? {
+    guard depth > 0 else { return nil }
+    if let role = elementRole(element),
+       role == kAXStaticTextRole as String,
+       let value = elementAttribute(element, kAXValueAttribute as CFString) as? String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
         }
+    }
+    for child in elementChildren(element) {
+        if let found = firstStaticText(in: child, depth: depth - 1) {
+            return found
+        }
+    }
+    return nil
+}
+
+private func collectSessionTitles(in list: AXUIElement) -> [String] {
+    var titles: [String] = []
+    for row in elementChildren(list) {
+        if let title = firstStaticText(in: row, depth: 4) {
+            titles.append(title)
+        }
+    }
+    return titles
+}
+
+private func findSessionTitles(in window: AXUIElement) -> [String] {
+    var candidates: [[String]] = []
+    func walk(_ element: AXUIElement, depth: Int) {
+        guard depth > 0 else { return }
+        if let role = elementRole(element),
+           role == kAXOutlineRole as String || role == kAXTableRole as String || role == kAXListRole as String {
+            let titles = collectSessionTitles(in: element)
+            if !titles.isEmpty {
+                candidates.append(titles)
+            }
+        }
+        for child in elementChildren(element) {
+            walk(child, depth: depth - 1)
+        }
+    }
+    walk(window, depth: 6)
+    let scored = candidates.map { titles -> (Int, [String]) in
+        let score = titles.filter { $0.count <= 30 }.count
+        return (score, titles)
+    }
+    guard let best = scored.max(by: { lhs, rhs in
+        if lhs.0 == rhs.0 { return lhs.1.count < rhs.1.count }
+        return lhs.0 < rhs.0
+    }) else { return [] }
+    var seen = Set<String>()
+    return best.1.filter { title in
+        if seen.contains(title) { return false }
+        seen.insert(title)
+        return true
     }
 }
 
@@ -145,6 +225,29 @@ private func windowTitle(_ window: AXUIElement) -> String {
     return "未知会话"
 }
 
+private func normalizeListenTargets(_ raw: Any?) -> [String: String] {
+    guard let items = raw as? [[String: Any]] else { return [:] }
+    var normalized: [String: String] = [:]
+    for item in items {
+        let name = (item["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty || normalized[name] != nil { continue }
+        let kindRaw = (item["kind"] as? String ?? "unknown").lowercased()
+        let kind = listenTargetKinds.contains(kindRaw) ? kindRaw : "unknown"
+        normalized[name] = kind
+    }
+    return normalized
+}
+
+private func resolveIsGroup(kind: String, title: String) -> Bool {
+    if kind == "group" {
+        return true
+    }
+    if kind == "direct" {
+        return false
+    }
+    return title.contains("群")
+}
+
 private func pollMessages() {
     guard checkAccessibility() else {
         emitError(code: "PERMISSION_DENIED", message: "Accessibility permission required", recoverable: true)
@@ -152,31 +255,37 @@ private func pollMessages() {
         emitStatus("error", detail: "缺少辅助功能权限")
         return
     }
-    guard let window = frontmostWeChatWindow() else { return }
-    let title = windowTitle(window)
-    var texts: [String] = []
-    collectStaticTexts(from: window, depth: 6, results: &texts)
-    guard let latest = texts.last else { return }
-    let key = "\(latest):\(title)"
-    if state.lastMessageKeys[title] == key { return }
-    state.lastMessageKeys[title] = key
+    let targets = state.listenTargets
+    if targets.isEmpty { return }
+    let windows = weChatWindows()
+    if windows.isEmpty { return }
+    for window in windows {
+        let title = windowTitle(window).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let kind = targets[title] else { continue }
+        var texts: [String] = []
+        collectStaticTexts(from: window, depth: 6, results: &texts)
+        guard let latest = texts.last else { continue }
+        let key = "\(latest):\(title)"
+        if state.lastMessageKeys[title] == key { continue }
+        state.lastMessageKeys[title] = key
 
-    let senderName: String
-    if let colonIndex = latest.firstIndex(of: ":") {
-        senderName = String(latest[..<colonIndex])
-    } else {
-        senderName = title
+        let senderName: String
+        if let colonIndex = latest.firstIndex(of: ":") {
+            senderName = String(latest[..<colonIndex])
+        } else {
+            senderName = title
+        }
+
+        sendEnvelope(type: "message.new", payload: [
+            "chat_id": title as Any,
+            "chat_title": title as Any,
+            "is_group": resolveIsGroup(kind: kind, title: title) as Any,
+            "sender_name": senderName as Any,
+            "text": latest as Any,
+            "timestamp": Int(Date().timeIntervalSince1970) as Any,
+            "msg_id": NSNull(),
+        ])
     }
-
-    sendEnvelope(type: "message.new", payload: [
-        "chat_id": title as Any,
-        "chat_title": title as Any,
-        "is_group": title.contains("群") as Any,
-        "sender_name": senderName as Any,
-        "text": latest as Any,
-        "timestamp": Int(Date().timeIntervalSince1970) as Any,
-        "msg_id": NSNull(),
-    ])
 }
 
 private func pasteViaAppleScript() -> Bool {
@@ -219,6 +328,22 @@ private func writeInput(chatId: String, text: String, restoreClipboard: Bool) {
     }
 }
 
+private func listRecentChats() -> [[String: Any]] {
+    guard checkAccessibility() else {
+        emitError(code: "PERMISSION_DENIED", message: "Accessibility permission required", recoverable: true)
+        return []
+    }
+    let windows = weChatWindows()
+    for window in windows {
+        let titles = findSessionTitles(in: window)
+        if titles.isEmpty { continue }
+        return titles.map { title in
+            ["chat_id": title, "chat_title": title, "kind": "unknown"]
+        }
+    }
+    return []
+}
+
 private func handleCommand(_ message: [String: Any]) {
     let msgType = message["type"] as? String ?? ""
     let msgId = message["id"] as? String ?? ""
@@ -239,6 +364,13 @@ private func handleCommand(_ message: [String: Any]) {
     case "listen.start", "listen.resume":
         if let interval = payload["poll_interval_ms"] as? Double, interval >= 200 {
             state.pollInterval = max(interval / 1000.0, 0.2)
+        } else if let interval = payload["poll_interval_ms"] as? Int, interval >= 200 {
+            state.pollInterval = max(Double(interval) / 1000.0, 0.2)
+        }
+        if let targetsRaw = payload["targets"] {
+            let normalized = normalizeListenTargets(targetsRaw)
+            state.listenTargets = normalized
+            state.lastMessageKeys = state.lastMessageKeys.filter { normalized.keys.contains($0.key) }
         }
         state.listening = true
         emitStatus("listening")
@@ -248,6 +380,10 @@ private func handleCommand(_ message: [String: Any]) {
     case "listen.stop":
         state.listening = false
         emitStatus("idle")
+    case "listen.targets":
+        let normalized = normalizeListenTargets(payload["targets"])
+        state.listenTargets = normalized
+        state.lastMessageKeys = state.lastMessageKeys.filter { normalized.keys.contains($0.key) }
     case "input.write":
         let chatId = (payload["chat_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let text = (payload["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -257,6 +393,13 @@ private func handleCommand(_ message: [String: Any]) {
         } else {
             writeInput(chatId: chatId, text: text, restoreClipboard: restore)
         }
+    case "chats.list":
+        let requestId = (payload["request_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if requestId.isEmpty {
+            emitError(code: "CHAT_LIST_FAILED", message: "request_id missing", recoverable: true)
+        }
+        let chats = listRecentChats()
+        sendEnvelope(type: "chats.list.result", payload: ["request_id": requestId, "chats": chats], trackAck: true)
     default:
         break
     }
@@ -294,7 +437,7 @@ private func processPending() {
 sendEnvelope(type: "agent.ready", payload: [
     "platform": "macos",
     "agent_version": "0.1.0",
-    "capabilities": ["listen", "write"],
+    "capabilities": ["listen", "write", "chats.list"],
     "supports_clipboard_restore": true,
 ])
 
@@ -306,7 +449,11 @@ let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
 timer.schedule(deadline: .now(), repeating: .milliseconds(100))
 timer.setEventHandler {
     if state.listening {
-        pollMessages()
+        let now = Date()
+        if now.timeIntervalSince(state.lastPollAt) >= state.pollInterval {
+            state.lastPollAt = now
+            pollMessages()
+        }
     }
     processPending()
 }

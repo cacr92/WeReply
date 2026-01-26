@@ -1,7 +1,7 @@
 use crate::deepseek;
 use crate::ipc::{
-    parse_envelope, AgentErrorPayload, AgentReadyPayload, AgentStatusPayload, IpcEnvelope,
-    InputResultPayload, MessageNewPayload, validate_message_new,
+    parse_envelope, AgentErrorPayload, AgentReadyPayload, AgentStatusPayload, ChatsListResultPayload,
+    IpcEnvelope, InputResultPayload, MessageNewPayload, validate_message_new,
 };
 use crate::secret::ApiKeyManager;
 use crate::state::{AppState, ChatMessage};
@@ -248,6 +248,33 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                 });
             }
         }
+        "chats.list.result" => match serde_json::from_value::<ChatsListResultPayload>(envelope.payload)
+        {
+            Ok(payload) => {
+                let sender = {
+                    let mut guard = state.lock().await;
+                    let Some((pending_id, _)) = guard.pending_chats_list.as_ref() else {
+                        return;
+                    };
+                    if pending_id != &payload.request_id {
+                        return;
+                    }
+                    guard.recent_chats = payload.chats.clone();
+                    guard.pending_chats_list.take().map(|(_, sender)| sender)
+                };
+                if let Some(sender) = sender {
+                    let _ = sender.send(payload.chats);
+                }
+            }
+            Err(err) => {
+                warn!("会话列表解析失败: {}", err);
+                let sender = {
+                    let mut guard = state.lock().await;
+                    guard.pending_chats_list.take()
+                };
+                drop(sender);
+            }
+        },
         "input.result" => {
             if let Ok(payload) = serde_json::from_value::<InputResultPayload>(envelope.payload) {
                 if !payload.ok {

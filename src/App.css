@@ -405,6 +405,91 @@ html[data-theme="dark"] .empty {
   color: var(--text-muted);
 }
 
+.listen-targets {
+  display: grid;
+  gap: 12px;
+}
+
+.listen-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.listen-row input,
+.listen-row select {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: inherit;
+}
+
+.listen-row input {
+  flex: 1 1 200px;
+}
+
+.listen-row select {
+  min-width: 110px;
+}
+
+.listen-columns {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.listen-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.listen-list {
+  display: grid;
+  gap: 8px;
+}
+
+.listen-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+html[data-theme="dark"] .listen-item {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.listen-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.listen-name {
+  font-size: 13px;
+}
+
+.listen-kind {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--highlight);
+  color: var(--accent-strong);
+}
+
+button.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
 button {
   padding: 10px 16px;
   border-radius: 999px;

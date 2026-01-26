@@ -9,11 +9,17 @@ export type SuggestionStyle = "formal" | "neutral" | "casual"
 
 export type Platform = "windows" | "macos" | "unknown"
 
+export type ChatKind = "direct" | "group" | "unknown"
+
+export type ListenTarget = { name: string; kind: ChatKind }
+
+export type ChatSummary = { chat_id: string; chat_title: string; kind: ChatKind }
+
 export type Suggestion = { id: string; style: SuggestionStyle; text: string }
 
 export type Status = { state: RuntimeState; platform: Platform; agent_connected: boolean; last_error: string }
 
-export type Config = { deepseek_model: string; suggestion_count: number; context_max_messages: number; context_max_chars: number; poll_interval_ms: number; temperature: number; top_p: number; base_url: string; timeout_ms: number; max_retries: number; log_level: string; log_to_file: boolean }
+export type Config = { deepseek_model: string; suggestion_count: number; context_max_messages: number; context_max_chars: number; poll_interval_ms: number; listen_targets: { name: string; kind: ChatKind }[]; temperature: number; top_p: number; base_url: string; timeout_ms: number; max_retries: number; log_level: string; log_to_file: boolean }
 
 export type SuggestionsUpdated = { chat_id: string; suggestions: { id: string; style: SuggestionStyle; text: string }[] }
 
@@ -29,6 +35,9 @@ export const commands = {
   getConfig: (): Promise<ApiResponse<Config>> => invoke("get_config"),
   setConfig: (config: Config): Promise<ApiResponse<null>> => invoke("set_config", { config }),
   getStatus: (): Promise<ApiResponse<Status>> => invoke("get_status"),
+  getListenTargets: (): Promise<ApiResponse<ListenTarget[]>> => invoke("get_listen_targets"),
+  setListenTargets: (targets: ListenTarget[]): Promise<ApiResponse<null>> =>
+    invoke("set_listen_targets", { targets }),
   startListening: (): Promise<ApiResponse<null>> => invoke("start_listening"),
   stopListening: (): Promise<ApiResponse<null>> => invoke("stop_listening"),
   pauseListening: (): Promise<ApiResponse<null>> => invoke("pause_listening"),
@@ -41,6 +50,7 @@ export const commands = {
   diagnoseDeepseek: (apiKey?: string): Promise<ApiResponse<DeepseekDiagnostics>> =>
     invoke("diagnose_deepseek", apiKey ? { apiKey } : {}),
   listModels: (): Promise<ApiResponse<string[]>> => invoke("list_models"),
+  listRecentChats: (): Promise<ApiResponse<ChatSummary[]>> => invoke("list_recent_chats"),
   setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>
     invoke("set_deepseek_model", { model }),
 };

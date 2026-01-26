@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crate::types::{ChatSummary, ListenTarget};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -64,6 +65,24 @@ pub struct InputWritePayload {
 pub struct ListenControlPayload {
     #[serde(default)]
     pub poll_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub targets: Option<Vec<ListenTarget>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ListenTargetsPayload {
+    pub targets: Vec<ListenTarget>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatsListPayload {
+    pub request_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatsListResultPayload {
+    pub request_id: String,
+    pub chats: Vec<ChatSummary>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -143,6 +162,7 @@ pub fn validate_message_new(payload: &MessageNewPayload) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::ChatKind;
 
     #[test]
     fn serialize_message_new() {
@@ -172,8 +192,22 @@ mod tests {
     fn listen_control_payload_serializes() {
         let payload = ListenControlPayload {
             poll_interval_ms: Some(800),
+            targets: None,
         };
         let value = serde_json::to_value(payload).unwrap();
         assert_eq!(value["poll_interval_ms"], 800);
+    }
+
+    #[test]
+    fn listen_control_payload_with_targets_serializes() {
+        let payload = ListenControlPayload {
+            poll_interval_ms: Some(800),
+            targets: Some(vec![ListenTarget {
+                name: "Team A".into(),
+                kind: ChatKind::Group,
+            }]),
+        };
+        let value = serde_json::to_value(payload).unwrap();
+        assert!(value.get("targets").is_some());
     }
 }
