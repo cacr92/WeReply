@@ -1,5 +1,6 @@
 pub mod types;
 pub mod windows;
+pub mod macos;
 
 use crate::types::{api_err, api_ok, ApiResponse};
 use anyhow::Result;
