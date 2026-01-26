@@ -67,8 +67,13 @@ textarea {
 .topbar {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   align-items: center;
+  padding: 12px 14px;
+  background: var(--surface-strong);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow);
 }
 
 .brand {
@@ -108,6 +113,35 @@ textarea {
   gap: 12px;
 }
 
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.control-group button {
+  height: 40px;
+  padding: 0 18px;
+}
+
+.control-group .primary {
+  box-shadow: 0 10px 24px rgba(217, 111, 50, 0.25);
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .status-pill {
   padding: 6px 14px;
   border-radius: 999px;
@@ -118,11 +152,6 @@ textarea {
 .status-pill[data-state="error"] {
   background: rgba(229, 85, 72, 0.2);
   color: #e54f3c;
-}
-
-.controls {
-  display: flex;
-  gap: 10px;
 }
 
 .grid {
@@ -157,6 +186,23 @@ textarea {
 .panel-header span {
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.panel.suggestions {
+  gap: 16px;
+  min-height: 200px;
+}
+
+.panel.suggestions .panel-header h2 {
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
+.panel.suggestions .panel-header span {
+  background: var(--highlight);
+  color: var(--accent-strong);
+  padding: 4px 10px;
+  border-radius: 999px;
 }
 
 .suggestion-list {
@@ -194,8 +240,15 @@ html[data-theme="dark"] .suggestion {
 .empty {
   color: var(--text-muted);
   font-size: 14px;
-  padding: 24px 0;
+  padding: 18px 20px;
   text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-soft);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+html[data-theme="dark"] .empty {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .api-key {
@@ -307,12 +360,11 @@ button.ghost:hover {
 @media (max-width: 720px) {
   .topbar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
-  .controls {
-    width: 100%;
-    justify-content: space-between;
+  .top-actions {
+    align-self: flex-end;
   }
 
   .grid {

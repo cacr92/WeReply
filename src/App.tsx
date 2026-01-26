@@ -256,31 +256,37 @@ function App() {
   return (
     <main className="app">
       <header className="topbar">
-        <div className="brand">
-          <div className="logo">WR</div>
-          <div>
-            <h1>WeReply</h1>
-            <p>桌面端智能回复建议助手</p>
-          </div>
+        <div className="control-group">
+          <button
+            className="primary"
+            onClick={handleStart}
+            disabled={status.state === "listening" || status.state === "generating"}
+          >
+            开始监听
+          </button>
+          <button className="ghost" onClick={handleStop} disabled={status.state === "idle"}>
+            停止
+          </button>
         </div>
         <div className="top-actions">
-          <button className="ghost" onClick={() => setSettingsOpen(true)}>
-            设置
+          <button
+            className="ghost icon-button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="设置"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Zm9.1 3.3-.9-.2a7.2 7.2 0 0 0-.7-1.7l.6-.7a1.2 1.2 0 0 0 0-1.7l-1.3-1.3a1.2 1.2 0 0 0-1.7 0l-.7.6c-.6-.3-1.2-.5-1.7-.7l-.2-.9a1.2 1.2 0 0 0-1.2-.9h-1.8a1.2 1.2 0 0 0-1.2.9l-.2.9c-.6.2-1.1.4-1.7.7l-.7-.6a1.2 1.2 0 0 0-1.7 0L4.4 6.3a1.2 1.2 0 0 0 0 1.7l.6.7c-.3.6-.5 1.1-.7 1.7l-.9.2a1.2 1.2 0 0 0-.9 1.2v1.8c0 .6.4 1.1.9 1.2l.9.2c.2.6.4 1.1.7 1.7l-.6.7a1.2 1.2 0 0 0 0 1.7l1.3 1.3a1.2 1.2 0 0 0 1.7 0l.7-.6c.6.3 1.1.5 1.7.7l.2.9c.1.6.6 1 1.2 1h1.8a1.2 1.2 0 0 0 1.2-1l.2-.9c.6-.2 1.1-.4 1.7-.7l.7.6a1.2 1.2 0 0 0 1.7 0l1.3-1.3a1.2 1.2 0 0 0 0-1.7l-.6-.7c.3-.6.5-1.1.7-1.7l.9-.2c.6-.1 1-.6 1-1.2v-1.8c0-.6-.4-1.1-1-1.2Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       </header>
-
-      <section className="controls">
-        <button
-          onClick={handleStart}
-          disabled={status.state === "listening" || status.state === "generating"}
-        >
-          开始监听
-        </button>
-        <button className="ghost" onClick={handleStop} disabled={status.state === "idle"}>
-          停止
-        </button>
-      </section>
 
       <section className="grid">
         <div className="panel suggestions">
@@ -312,6 +318,14 @@ function App() {
         open={settingsOpen}
         onCancel={() => setSettingsOpen(false)}
         footer={null}
+        width={720}
+        style={{ top: 24 }}
+        styles={{
+          body: {
+            maxHeight: "calc(100vh - 180px)",
+            overflowY: "auto",
+          },
+        }}
       >
         <div className="panel settings">
           <div className="panel-header">
