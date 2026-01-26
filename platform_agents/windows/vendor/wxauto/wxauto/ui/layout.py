@@ -54,6 +54,15 @@ def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) 
         if candidate:
             return candidate
 
+    any_list = _find_first_by_type(root, "ListControl", max_depth)
+    if any_list:
+        candidate = _find_ancestor_with(
+            any_list,
+            lambda ctrl: _looks_like_session_container(ctrl, labels),
+        )
+        if candidate:
+            return candidate
+
     return _find_first_control_matching(
         root, lambda ctrl: _looks_like_session_container(ctrl, labels), max_depth
     )
@@ -82,6 +91,15 @@ def _find_chat_container(root: object, labels: LayoutLabels, max_depth: int) -> 
         if candidate:
             return candidate
 
+    any_button = _find_first_by_type(root, "ButtonControl", max_depth)
+    if any_button:
+        candidate = _find_ancestor_with(
+            any_button,
+            lambda ctrl: _looks_like_chat_container(ctrl, labels),
+        )
+        if candidate:
+            return candidate
+
     return _find_first_control_matching(
         root, lambda ctrl: _looks_like_chat_container(ctrl, labels), max_depth
     )
@@ -101,6 +119,15 @@ def _find_navigation_container(root: object, labels: LayoutLabels, max_depth: in
             return candidate
         return _safe_parent(nav_button)
 
+    any_button = _find_first_by_type(root, "ButtonControl", max_depth)
+    if any_button:
+        candidate = _find_ancestor_with(
+            any_button,
+            lambda ctrl: _count_controls_by_type(ctrl, "ButtonControl") >= 3,
+        )
+        if candidate:
+            return candidate
+
     return _find_first_control_matching(
         root,
         lambda ctrl: _count_controls_by_name(ctrl, "ButtonControl", labels.navigation_button_names)
@@ -110,11 +137,20 @@ def _find_navigation_container(root: object, labels: LayoutLabels, max_depth: in
 
 
 def _looks_like_session_container(control: object, labels: LayoutLabels) -> bool:
-    return _has_descendant_by_type_and_name(
+    has_search_named = _has_descendant_by_type_and_name(
         control, "EditControl", labels.session_search_names
-    ) and _has_descendant_by_type_and_name(
+    )
+    has_list_named = _has_descendant_by_type_and_name(
         control, "ListControl", labels.session_list_names
     )
+    if has_search_named and has_list_named:
+        return True
+    has_edit = _has_descendant_by_type(control, "EditControl")
+    has_list = _has_descendant_by_type(control, "ListControl")
+    has_send_named = _has_descendant_by_type_and_name(
+        control, "ButtonControl", labels.send_button_names
+    )
+    return has_edit and has_list and not has_send_named
 
 
 def _looks_like_chat_container(control: object, labels: LayoutLabels) -> bool:
@@ -158,6 +194,14 @@ def _count_controls_by_name(control: object, control_type: str, names: Set[str])
     return count
 
 
+def _count_controls_by_type(control: object, control_type: str) -> int:
+    count = 0
+    for ctrl, _ in _iter_controls(control, SUBTREE_SCAN_DEPTH):
+        if _control_type(ctrl) == control_type:
+            count += 1
+    return count
+
+
 def _find_first_by_type_and_name(
     root: object, control_type: str, names: Set[str], max_depth: int
 ) -> Optional[object]:
@@ -168,6 +212,14 @@ def _find_first_by_type_and_name(
         root,
         lambda ctrl: _control_type(ctrl) == control_type and _control_name(ctrl) in names,
         max_depth,
+    )
+
+
+def _find_first_by_type(
+    root: object, control_type: str, max_depth: int
+) -> Optional[object]:
+    return _find_first_control_matching(
+        root, lambda ctrl: _control_type(ctrl) == control_type, max_depth
     )
 
 

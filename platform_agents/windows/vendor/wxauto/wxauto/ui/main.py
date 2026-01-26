@@ -340,9 +340,9 @@ class WeChatMainWnd(WeChatSubWnd):
             return resolved
 
         return LayoutLabels(
-            session_list_names=names(["会话", "折叠的群聊"]),
-            session_search_names=names(["搜索"]),
-            message_list_names=names(["消息"]),
+            session_list_names=names(["会话", "聊天", "聊天记录", "折叠的群聊"]),
+            session_search_names=names(["搜索", "搜索或跳转"]),
+            message_list_names=names(["消息", "聊天记录"]),
             send_button_names=names(["发送", "发送(S)", "Send"]),
             navigation_button_names=names(
                 [
