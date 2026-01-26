@@ -8,6 +8,7 @@ mod logging;
 mod secret;
 mod state;
 mod types;
+mod ui_automation;
 
 use crate::agent::start_agent;
 use crate::config::load_config;
@@ -226,6 +227,14 @@ async fn list_recent_chats(
 async fn list_recent_chats_inner(
     state: SharedState,
 ) -> Result<ApiResponse<Vec<ChatSummary>>, String> {
+    let automation = {
+        let guard = state.lock().await;
+        guard.automation.clone()
+    };
+    if automation.is_ready() {
+        return Ok(automation.list_recent_chats().await);
+    }
+
     let request_id = Uuid::new_v4().to_string();
     let (sender, receiver) = {
         let mut guard = state.lock().await;

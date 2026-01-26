@@ -1,6 +1,7 @@
 use crate::agent::AgentHandle;
 use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{ChatSummary, Config, ListenTarget, Status};
+use crate::ui_automation::AutomationManager;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
@@ -15,6 +16,7 @@ pub struct AppState {
     pub config: Config,
     pub status: Status,
     pub agent: Option<AgentHandle>,
+    pub automation: AutomationManager,
     pub listen_targets: Vec<ListenTarget>,
     pub recent_chats: Vec<ChatSummary>,
     pub pending_chats_list: Option<(String, oneshot::Sender<Vec<ChatSummary>>)>,
@@ -34,6 +36,7 @@ impl AppState {
             config,
             status,
             agent: None,
+            automation: AutomationManager::new(None),
             listen_targets,
             recent_chats: Vec::new(),
             pending_chats_list: None,
