@@ -248,10 +248,9 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                 });
             }
         }
-        "chats.list.result" => {
-            if let Ok(payload) =
-                serde_json::from_value::<ChatsListResultPayload>(envelope.payload)
-            {
+        "chats.list.result" => match serde_json::from_value::<ChatsListResultPayload>(envelope.payload)
+        {
+            Ok(payload) => {
                 let sender = {
                     let mut guard = state.lock().await;
                     guard.recent_chats = payload.chats.clone();
@@ -261,7 +260,15 @@ async fn handle_envelope(app: &AppHandle, state: &Arc<Mutex<AppState>>, envelope
                     let _ = sender.send(payload.chats);
                 }
             }
-        }
+            Err(err) => {
+                warn!("会话列表解析失败: {}", err);
+                let sender = {
+                    let mut guard = state.lock().await;
+                    guard.pending_chats_list.take()
+                };
+                drop(sender);
+            }
+        },
         "input.result" => {
             if let Ok(payload) = serde_json::from_value::<InputResultPayload>(envelope.payload) {
                 if !payload.ok {

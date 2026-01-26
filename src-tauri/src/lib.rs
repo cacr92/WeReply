@@ -92,7 +92,9 @@ async fn start_listening(
         warn!("启动 Agent 失败: {}", err);
         return Ok(api_err(err.to_string()));
     }
-    if let Err(err) = send_listen_control(state.inner().clone(), "listen.start", true).await {
+    if let Err(err) =
+        send_listen_control(state.inner().clone(), "listen.start", true, true).await
+    {
         warn!("发送监听指令失败: {}", err);
         return Ok(api_err(err));
     }
@@ -108,7 +110,9 @@ async fn stop_listening(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
     info!("收到停止监听请求");
-    if let Err(err) = send_listen_control(state.inner().clone(), "listen.stop", false).await {
+    if let Err(err) =
+        send_listen_control(state.inner().clone(), "listen.stop", false, false).await
+    {
         warn!("发送停止监听指令失败: {}", err);
         return Ok(api_err(err));
     }
@@ -124,7 +128,9 @@ async fn pause_listening(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
     info!("收到暂停监听请求");
-    if let Err(err) = send_listen_control(state.inner().clone(), "listen.pause", false).await {
+    if let Err(err) =
+        send_listen_control(state.inner().clone(), "listen.pause", false, false).await
+    {
         warn!("发送暂停监听指令失败: {}", err);
         return Ok(api_err(err));
     }
@@ -147,7 +153,9 @@ async fn resume_listening(
             return Ok(api_err("请先设置监听对象"));
         }
     }
-    if let Err(err) = send_listen_control(state.inner().clone(), "listen.resume", true).await {
+    if let Err(err) =
+        send_listen_control(state.inner().clone(), "listen.resume", true, true).await
+    {
         warn!("发送恢复监听指令失败: {}", err);
         return Ok(api_err(err));
     }
@@ -177,7 +185,7 @@ async fn set_listen_targets(
         Err(err) => return Ok(api_err(err.to_string())),
     };
 
-    let (should_notify, sender) = {
+    let sender = {
         let mut guard = state.lock().await;
         guard.listen_targets = normalized.clone();
         guard.config.listen_targets = normalized.clone();
@@ -185,17 +193,10 @@ async fn set_listen_targets(
             warn!("保存监听对象失败: {}", err);
             return Ok(api_err(err.to_string()));
         }
-        (
-            guard.status.state == RuntimeState::Listening,
-            guard.agent.as_ref().map(|agent| agent.clone_sender()),
-        )
+        guard.agent.as_ref().map(|agent| agent.clone_sender())
     };
 
-    if should_notify {
-        let Some(sender) = sender else {
-            warn!("发送监听对象失败: Agent 未连接");
-            return Ok(api_err("Agent 未连接"));
-        };
+    if let Some(sender) = sender {
         let payload = ListenTargetsPayload {
             targets: normalized,
         };
@@ -417,6 +418,7 @@ async fn send_listen_control(
     state: SharedState,
     message_type: &str,
     include_poll_interval: bool,
+    include_targets: bool,
 ) -> Result<(), String> {
     let (sender, poll_interval_ms, targets) = {
         let guard = state.lock().await;
@@ -430,7 +432,7 @@ async fn send_listen_control(
             } else {
                 None
             },
-            if include_poll_interval {
+            if include_targets {
                 Some(guard.listen_targets.clone())
             } else {
                 None
