@@ -61,7 +61,7 @@ private func emitStatus(_ status: String, detail: String = "") {
 }
 
 private func checkAccessibility() -> Bool {
-    let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: false] as CFDictionary
+    let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
     return AXIsProcessTrustedWithOptions(options)
 }
 
@@ -75,18 +75,20 @@ private func frontmostWeChatApp() -> NSRunningApplication? {
     return nil
 }
 
-private func frontmostWeChatWindow() -> AXUIElement? {
-    guard let app = NSWorkspace.shared.frontmostApplication,
-          let bundleId = app.bundleIdentifier,
-          bundleId == "com.tencent.xinWeChat" || bundleId == "com.tencent.WeChat" else {
-        return nil
+private func weChatApp() -> NSRunningApplication? {
+    let bundleIds = ["com.tencent.xinWeChat", "com.tencent.WeChat"]
+    for bundleId in bundleIds {
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
+            return app
+        }
     }
+    return nil
+}
+
+private func frontmostWeChatWindow() -> AXUIElement? {
+    guard let app = weChatApp() else { return nil }
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     var value: CFTypeRef?
-    let focusedResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &value)
-    if focusedResult == .success, let window = value {
-        return (window as! AXUIElement)
-    }
     let windowsResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
     if windowsResult == .success, let windows = value as? [AXUIElement], let first = windows.first {
         return first
@@ -167,13 +169,13 @@ private func pollMessages() {
     }
 
     sendEnvelope(type: "message.new", payload: [
-        "chat_id": title,
-        "chat_title": title,
-        "is_group": title.contains("群"),
-        "sender_name": senderName,
-        "text": latest,
-        "timestamp": Int(Date().timeIntervalSince1970),
-        "msg_id": nil,
+        "chat_id": title as Any,
+        "chat_title": title as Any,
+        "is_group": title.contains("群") as Any,
+        "sender_name": senderName as Any,
+        "text": latest as Any,
+        "timestamp": Int(Date().timeIntervalSince1970) as Any,
+        "msg_id": NSNull(),
     ])
 }
 
@@ -195,7 +197,7 @@ private func writeInput(chatId: String, text: String, restoreClipboard: Bool) {
         sendEnvelope(type: "input.result", payload: ["ok": false, "error": "WeChat is not running"])
         return
     }
-    app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+    app.activate(options: [.activateAllWindows])
 
     if let window = frontmostWeChatWindow(), let input = findInputElement(in: window, depth: 6) {
         AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)

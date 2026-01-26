@@ -299,6 +299,7 @@ async fn update_agent_connected(
     if !connected {
         guard.status.state = RuntimeState::Error;
         guard.status.last_error = last_error.into();
+        guard.agent = None;
     }
     let _ = app.emit("status.changed", guard.status.clone());
 }
