@@ -220,6 +220,12 @@ async fn set_listen_targets(
 async fn list_recent_chats(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<Vec<ChatSummary>>, String> {
+    list_recent_chats_inner(state.inner().clone()).await
+}
+
+async fn list_recent_chats_inner(
+    state: SharedState,
+) -> Result<ApiResponse<Vec<ChatSummary>>, String> {
     let request_id = Uuid::new_v4().to_string();
     let (sender, receiver) = {
         let mut guard = state.lock().await;
@@ -523,4 +529,34 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn list_recent_chats_requires_agent() {
+        let state = Arc::new(Mutex::new(AppState::new(
+            Config::default(),
+            initial_status(),
+        )));
+        let result = list_recent_chats_inner(state).await.unwrap();
+        assert!(!result.success);
+    }
+
+    #[tokio::test]
+    async fn list_recent_chats_rejects_when_pending() {
+        let state = Arc::new(Mutex::new(AppState::new(
+            Config::default(),
+            initial_status(),
+        )));
+        let (tx, _rx) = oneshot::channel();
+        {
+            let mut guard = state.lock().await;
+            guard.pending_chats_list = Some(("req".to_string(), tx));
+        }
+        let result = list_recent_chats_inner(state).await.unwrap();
+        assert!(!result.success);
+    }
 }
