@@ -20,10 +20,11 @@ class MainControls:
     chat: Optional[object]
 
 
-DEFAULT_MAX_DEPTH = 18
-SUBTREE_SCAN_DEPTH = 8
-EDIT_CONTROL_TYPES = {"EditControl", "DocumentControl"}
-LIST_CONTROL_TYPES = {"ListControl", "TableControl", "DataGridControl"}
+DEFAULT_MAX_DEPTH = 24
+SUBTREE_SCAN_DEPTH = 10
+EDIT_CONTROL_TYPES = {"EditControl", "DocumentControl", "ComboBoxControl", "RichEditControl"}
+LIST_CONTROL_TYPES = {"ListControl", "TableControl", "DataGridControl", "ListViewControl"}
+ITEM_CONTROL_TYPES = {"ListItemControl"}
 
 
 def discover_main_controls(root: object, labels: LayoutLabels) -> MainControls:
@@ -60,6 +61,15 @@ def _find_session_container(root: object, labels: LayoutLabels, max_depth: int) 
     if any_list:
         candidate = _find_ancestor_with(
             any_list,
+            lambda ctrl: _looks_like_session_container(ctrl, labels),
+        )
+        if candidate:
+            return candidate
+
+    any_item = _find_first_by_types(root, ITEM_CONTROL_TYPES, max_depth)
+    if any_item:
+        candidate = _find_ancestor_with(
+            any_item,
             lambda ctrl: _looks_like_session_container(ctrl, labels),
         )
         if candidate:
@@ -152,7 +162,10 @@ def _looks_like_session_container(control: object, labels: LayoutLabels) -> bool
     has_send_named = _has_descendant_by_type_and_name(
         control, "ButtonControl", labels.send_button_names
     )
-    return has_edit and has_list and not has_send_named
+    if has_edit and has_list and not has_send_named:
+        return True
+    has_items = _count_controls_by_type(control, "ListItemControl") >= 3
+    return has_edit and has_items and not has_send_named
 
 
 def _looks_like_chat_container(control: object, labels: LayoutLabels) -> bool:
