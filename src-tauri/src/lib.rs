@@ -14,13 +14,16 @@ use crate::config::load_config;
 use crate::config::save_config;
 use crate::secret::ApiKeyManager;
 use crate::state::AppState;
-use crate::ipc::{InputWritePayload, ListenControlPayload};
+use crate::ipc::{InputWritePayload, IpcEnvelope, ListenControlPayload, ListenTargetsPayload};
+use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{
-    api_err, api_ok, ApiResponse, Config, DeepseekDiagnostics, Platform, RuntimeState, Status,
+    api_err, api_ok, ApiResponse, ChatSummary, Config, DeepseekDiagnostics, ListenTarget, Platform,
+    RuntimeState, Status,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
+use tokio::time::{timeout, Duration};
 use tracing::{info, warn};
 
 type SharedState = Arc<Mutex<AppState>>;
@@ -79,6 +82,10 @@ async fn start_listening(
             info!("已在监听中，忽略重复请求");
             return Ok(api_ok(()));
         }
+        if guard.listen_targets.is_empty() {
+            warn!("未设置监听对象，拒绝开始监听");
+            return Ok(api_err("请先设置监听对象"));
+        }
     }
 
     if let Err(err) = ensure_agent_running(app.clone(), state.inner().clone()).await {
@@ -133,6 +140,13 @@ async fn resume_listening(
     state: State<'_, SharedState>,
 ) -> Result<ApiResponse<()>, String> {
     info!("收到恢复监听请求");
+    {
+        let guard = state.lock().await;
+        if guard.listen_targets.is_empty() {
+            warn!("未设置监听对象，拒绝恢复监听");
+            return Ok(api_err("请先设置监听对象"));
+        }
+    }
     if let Err(err) = send_listen_control(state.inner().clone(), "listen.resume", true).await {
         warn!("发送恢复监听指令失败: {}", err);
         return Ok(api_err(err));
@@ -140,6 +154,101 @@ async fn resume_listening(
     set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
     info!("监听已恢复");
     Ok(api_ok(()))
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_listen_targets(
+    state: State<'_, SharedState>,
+) -> Result<ApiResponse<Vec<ListenTarget>>, String> {
+    let guard = state.lock().await;
+    Ok(api_ok(guard.listen_targets.clone()))
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_listen_targets(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    targets: Vec<ListenTarget>,
+) -> Result<ApiResponse<()>, String> {
+    let normalized = match normalize_listen_targets(targets, MAX_LISTEN_TARGETS) {
+        Ok(targets) => targets,
+        Err(err) => return Ok(api_err(err.to_string())),
+    };
+
+    let (should_notify, sender) = {
+        let mut guard = state.lock().await;
+        guard.listen_targets = normalized.clone();
+        guard.config.listen_targets = normalized.clone();
+        if let Err(err) = save_config(&app, &guard.config) {
+            warn!("保存监听对象失败: {}", err);
+            return Ok(api_err(err.to_string()));
+        }
+        (
+            guard.status.state == RuntimeState::Listening,
+            guard.agent.as_ref().map(|agent| agent.clone_sender()),
+        )
+    };
+
+    if should_notify {
+        let Some(sender) = sender else {
+            warn!("发送监听对象失败: Agent 未连接");
+            return Ok(api_err("Agent 未连接"));
+        };
+        let payload = ListenTargetsPayload {
+            targets: normalized,
+        };
+        let payload_value = serde_json::to_value(payload).map_err(|err| err.to_string())?;
+        if let Err(err) = sender.send(IpcEnvelope::new("listen.targets", payload_value)).await {
+            warn!("发送监听对象失败: {}", err);
+            return Ok(api_err(err.to_string()));
+        }
+    }
+
+    Ok(api_ok(()))
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn list_recent_chats(
+    state: State<'_, SharedState>,
+) -> Result<ApiResponse<Vec<ChatSummary>>, String> {
+    let (sender, receiver) = {
+        let mut guard = state.lock().await;
+        if guard.pending_chats_list.is_some() {
+            return Ok(api_err("已有会话列表请求进行中"));
+        }
+        let sender = match guard.agent.as_ref() {
+            Some(agent) => agent.clone_sender(),
+            None => return Ok(api_err("Agent 未连接")),
+        };
+        let (tx, rx) = oneshot::channel();
+        guard.pending_chats_list = Some(tx);
+        (sender, rx)
+    };
+
+    let payload_value = serde_json::json!({});
+    if let Err(err) = sender.send(IpcEnvelope::new("chats.list", payload_value)).await {
+        let mut guard = state.lock().await;
+        guard.pending_chats_list = None;
+        warn!("发送会话列表请求失败: {}", err);
+        return Ok(api_err(err.to_string()));
+    }
+
+    match timeout(Duration::from_secs(3), receiver).await {
+        Ok(Ok(chats)) => Ok(api_ok(chats)),
+        Ok(Err(_)) => {
+            let mut guard = state.lock().await;
+            guard.pending_chats_list = None;
+            Ok(api_err("会话列表获取失败"))
+        }
+        Err(_) => {
+            let mut guard = state.lock().await;
+            guard.pending_chats_list = None;
+            Ok(api_err("会话列表请求超时"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -309,7 +418,7 @@ async fn send_listen_control(
     message_type: &str,
     include_poll_interval: bool,
 ) -> Result<(), String> {
-    let (sender, poll_interval_ms) = {
+    let (sender, poll_interval_ms, targets) = {
         let guard = state.lock().await;
         let Some(agent) = guard.agent.as_ref() else {
             return Err("Agent 未连接".to_string());
@@ -321,11 +430,16 @@ async fn send_listen_control(
             } else {
                 None
             },
+            if include_poll_interval {
+                Some(guard.listen_targets.clone())
+            } else {
+                None
+            },
         )
     };
     let payload = ListenControlPayload {
         poll_interval_ms,
-        targets: None,
+        targets,
     };
     let payload_value = serde_json::to_value(payload).map_err(|err| err.to_string())?;
     sender
@@ -381,6 +495,9 @@ pub fn run() {
             stop_listening,
             pause_listening,
             resume_listening,
+            get_listen_targets,
+            set_listen_targets,
+            list_recent_chats,
             write_suggestion,
             get_status,
             save_api_key,

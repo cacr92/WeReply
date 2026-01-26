@@ -75,6 +75,7 @@ pub struct Config {
     pub context_max_messages: u32,
     pub context_max_chars: u32,
     pub poll_interval_ms: u64,
+    pub listen_targets: Vec<ListenTarget>,
     pub temperature: f32,
     pub top_p: f32,
     pub base_url: String,
@@ -148,6 +149,7 @@ impl Default for Config {
             context_max_messages: 10,
             context_max_chars: 2000,
             poll_interval_ms: 800,
+            listen_targets: Vec::new(),
             temperature: 0.7,
             top_p: 1.0,
             base_url: "https://api.deepseek.com".to_string(),
@@ -171,6 +173,7 @@ mod tests {
         assert_eq!(cfg.context_max_messages, 10);
         assert_eq!(cfg.context_max_chars, 2000);
         assert_eq!(cfg.poll_interval_ms, 800);
+        assert!(cfg.listen_targets.is_empty());
         assert_eq!(cfg.temperature, 0.7);
         assert_eq!(cfg.top_p, 1.0);
         assert_eq!(cfg.base_url, "https://api.deepseek.com");

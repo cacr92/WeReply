@@ -5,6 +5,8 @@ use std::collections::HashSet;
 #[cfg(test)]
 use crate::types::ChatKind;
 
+pub const MAX_LISTEN_TARGETS: usize = 50;
+
 pub fn normalize_listen_targets(targets: Vec<ListenTarget>, max: usize) -> Result<Vec<ListenTarget>> {
     if max == 0 {
         return Ok(Vec::new());
