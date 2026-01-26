@@ -21,6 +21,29 @@ pub enum Platform {
 
 #[derive(Debug, Serialize, Deserialize, Type, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+pub enum ChatKind {
+    Direct,
+    Group,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone, PartialEq, Eq)]
+#[specta(inline)]
+pub struct ListenTarget {
+    pub name: String,
+    pub kind: ChatKind,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone, PartialEq, Eq)]
+#[specta(inline)]
+pub struct ChatSummary {
+    pub chat_id: String,
+    pub chat_title: String,
+    pub kind: ChatKind,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum SuggestionStyle {
     Formal,
     Neutral,

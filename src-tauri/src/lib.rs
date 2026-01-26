@@ -3,6 +3,7 @@ pub mod bindings;
 mod config;
 mod deepseek;
 mod ipc;
+mod listen_targets;
 mod logging;
 mod secret;
 mod state;
@@ -322,7 +323,10 @@ async fn send_listen_control(
             },
         )
     };
-    let payload = ListenControlPayload { poll_interval_ms };
+    let payload = ListenControlPayload {
+        poll_interval_ms,
+        targets: None,
+    };
     let payload_value = serde_json::to_value(payload).map_err(|err| err.to_string())?;
     sender
         .send(crate::ipc::IpcEnvelope::new(message_type, payload_value))

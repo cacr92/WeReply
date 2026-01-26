@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crate::types::ListenTarget;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -64,6 +65,8 @@ pub struct InputWritePayload {
 pub struct ListenControlPayload {
     #[serde(default)]
     pub poll_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub targets: Option<Vec<ListenTarget>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -172,6 +175,7 @@ mod tests {
     fn listen_control_payload_serializes() {
         let payload = ListenControlPayload {
             poll_interval_ms: Some(800),
+            targets: None,
         };
         let value = serde_json::to_value(payload).unwrap();
         assert_eq!(value["poll_interval_ms"], 800);
