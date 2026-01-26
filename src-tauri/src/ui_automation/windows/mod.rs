@@ -1,8 +1,10 @@
 pub mod element;
+pub mod input_box;
 pub mod message_watch;
 pub mod session_list;
 pub mod uia;
 
+pub use input_box::MockInputWriter;
 pub use message_watch::{MockWatcher, WatchMode};
 pub use session_list::{collect_recent_chats, MockSessionList, SessionListProvider};
 pub use uia::{find_wechat_hwnd, MockUia};
