@@ -8,6 +8,22 @@
   --border-soft: rgba(28, 27, 25, 0.08);
   --accent: #d96f32;
   --accent-strong: #b64e1b;
+  --control-primary-start: #e07b3a;
+  --control-primary-end: #c0531d;
+  --control-primary-hover-start: #f18a44;
+  --control-primary-hover-end: #c65a22;
+  --control-stop-bg: #f6e2d3;
+  --control-stop-hover: #f0d4bf;
+  --control-stop-text: #6c3c22;
+  --control-gear-bg: radial-gradient(circle at 30% 25%, #fff4e6 0%, #f2dcc8 70%, #edd1ba 100%);
+  --control-gear-hover-bg: radial-gradient(
+    circle at 30% 20%,
+    #fff7ec 0%,
+    #f2d4bd 70%,
+    #e8c7ad 100%
+  );
+  --control-gear-text: #8a4b2b;
+  --control-gear-text-hover: #b35a2a;
   --highlight: #f5e4d1;
   --shadow: 0 18px 40px rgba(33, 26, 18, 0.12);
   --radius-lg: 20px;
@@ -23,6 +39,22 @@ html[data-theme="dark"] {
   --border-soft: rgba(255, 255, 255, 0.1);
   --accent: #f08f54;
   --accent-strong: #f5a270;
+  --control-primary-start: #f19b5d;
+  --control-primary-end: #d66b2a;
+  --control-primary-hover-start: #f6a96a;
+  --control-primary-hover-end: #e27734;
+  --control-stop-bg: #3a2d24;
+  --control-stop-hover: #4a3529;
+  --control-stop-text: #f3d8c3;
+  --control-gear-bg: radial-gradient(circle at 30% 25%, #3f2c22 0%, #2b201a 70%, #251b16 100%);
+  --control-gear-hover-bg: radial-gradient(
+    circle at 30% 20%,
+    #4a3528 0%,
+    #302319 70%,
+    #281d16 100%
+  );
+  --control-gear-text: #f1c7a4;
+  --control-gear-text-hover: #f7d0ad;
   --highlight: rgba(240, 143, 84, 0.15);
   --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
 }
@@ -69,11 +101,11 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
-  padding: 12px 14px;
-  background: var(--surface-strong);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--shadow);
+  padding: 6px 2px;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .brand {
@@ -116,30 +148,87 @@ textarea {
 .control-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.control-group button {
-  height: 40px;
-  padding: 0 18px;
+.topbar .control-group button {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.control-group .primary {
-  box-shadow: 0 10px 24px rgba(217, 111, 50, 0.25);
+.topbar .control-group .primary {
+  background: linear-gradient(
+    135deg,
+    var(--control-primary-start) 0%,
+    var(--control-primary-end) 100%
+  );
+  box-shadow: 0 12px 24px rgba(217, 111, 50, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-.icon-button {
-  width: 40px;
-  height: 40px;
+.topbar .control-group .primary:hover {
+  background: linear-gradient(
+    135deg,
+    var(--control-primary-hover-start) 0%,
+    var(--control-primary-hover-end) 100%
+  );
+  transform: translateY(-1px);
+}
+
+.topbar .control-group .primary:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 16px rgba(217, 111, 50, 0.3),
+    inset 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.topbar button.ghost {
+  background: var(--control-stop-bg);
+  border: none;
+  color: var(--control-stop-text);
+  box-shadow: 0 10px 20px rgba(184, 112, 69, 0.18);
+}
+
+.topbar button.ghost:hover {
+  background: var(--control-stop-hover);
+  color: var(--control-stop-text);
+}
+
+.topbar button:disabled {
+  box-shadow: none;
+  transform: none;
+}
+
+.topbar .icon-button {
+  width: 44px;
+  height: 44px;
   padding: 0;
   display: inline-grid;
   place-items: center;
+  border-radius: 999px;
+  background: var(--control-gear-bg);
+  border: none;
+  box-shadow: 0 12px 24px rgba(163, 95, 58, 0.22);
+  color: var(--control-gear-text);
 }
 
-.icon-button svg {
-  width: 18px;
-  height: 18px;
+.topbar .icon-button:hover {
+  background: var(--control-gear-hover-bg);
+  transform: translateY(-1px);
+  color: var(--control-gear-text-hover);
+}
+
+.topbar .icon-button svg {
+  width: 19px;
+  height: 19px;
+  transition: transform 0.25s ease;
+}
+
+.topbar .icon-button:hover svg {
+  transform: rotate(18deg);
 }
 
 .status-pill {
