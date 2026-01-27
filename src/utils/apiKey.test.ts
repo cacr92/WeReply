@@ -19,4 +19,11 @@ describe("api key save outcome", () => {
     expect(result.apiKeySet).toBe(false);
     expect(result.clearInput).toBe(false);
   });
+
+  it("keeps input when save succeeds", () => {
+    const result = resolveApiKeySaveOutcome({ success: true, data: null, message: "" });
+    expect(result.status).toBe("connected");
+    expect(result.apiKeySet).toBe(true);
+    expect(result.clearInput).toBe(false);
+  });
 });

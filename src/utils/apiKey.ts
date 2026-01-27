@@ -29,7 +29,7 @@ export const resolveApiKeySaveOutcome = (
     return {
       status: "connected",
       apiKeySet: true,
-      clearInput: true,
+      clearInput: false,
       message: "API 密钥已保存并连接成功",
     };
   }
