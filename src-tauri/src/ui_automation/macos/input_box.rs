@@ -1,9 +1,13 @@
+#[cfg(test)]
+#[allow(dead_code)]
 pub struct MockAxInputWriter {
     ax_ok: bool,
     used_clipboard: bool,
 }
 
+#[cfg(test)]
 impl MockAxInputWriter {
+    #[allow(dead_code)]
     pub fn ax_fail() -> Self {
         Self {
             ax_ok: false,
@@ -11,6 +15,7 @@ impl MockAxInputWriter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn ax_ok() -> Self {
         Self {
             ax_ok: true,
@@ -18,6 +23,7 @@ impl MockAxInputWriter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn write(&mut self, _chat_id: &str, _text: &str) -> bool {
         if self.ax_ok {
             return true;
@@ -26,6 +32,7 @@ impl MockAxInputWriter {
         true
     }
 
+    #[allow(dead_code)]
     pub fn used_clipboard(&self) -> bool {
         self.used_clipboard
     }

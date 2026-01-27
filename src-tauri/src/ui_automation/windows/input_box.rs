@@ -1,8 +1,10 @@
+#[cfg(test)]
 pub struct MockInputWriter {
     uia_ok: bool,
     used_clipboard: bool,
 }
 
+#[cfg(test)]
 impl MockInputWriter {
     pub fn uia_fail() -> Self {
         Self {
@@ -11,6 +13,7 @@ impl MockInputWriter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn uia_ok() -> Self {
         Self {
             uia_ok: true,

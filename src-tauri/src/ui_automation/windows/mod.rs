@@ -4,11 +4,6 @@ pub mod message_watch;
 pub mod session_list;
 pub mod uia;
 
-pub use input_box::MockInputWriter;
-pub use message_watch::{MockWatcher, WatchMode};
-pub use session_list::{collect_recent_chats, MockSessionList, SessionListProvider};
-pub use uia::{find_wechat_hwnd, MockUia};
-pub use uia::UiaProvider;
 
 #[cfg(target_os = "windows")]
 pub use input_box::uia::UiaInputWriter;
@@ -24,7 +19,9 @@ mod tests;
 
 #[cfg(target_os = "windows")]
 mod automation {
-    use super::{collect_recent_chats, UiaClient, UiaInputWriter, UiaMessageWatcher, UiaSessionList};
+    use super::message_watch::WatchMode;
+    use super::session_list::collect_recent_chats;
+    use super::{UiaClient, UiaInputWriter, UiaMessageWatcher, UiaSessionList};
     use crate::types::{ChatSummary, ListenTarget, Platform};
     use crate::ui_automation::{IncomingMessage, WeChatAutomation};
     use anyhow::{anyhow, Result};
@@ -64,7 +61,7 @@ mod automation {
             let window = self.client.pick_wechat_window()?;
             let mut watcher = UiaMessageWatcher::new(self.client.automation(), &window)?;
             let mode = watcher.start();
-            if matches!(mode, super::WatchMode::Polling | super::WatchMode::Event) {
+            if matches!(mode, WatchMode::Polling | WatchMode::Event) {
                 let mut guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
                 *guard = Some(watcher);
                 return Ok(());

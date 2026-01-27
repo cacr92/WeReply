@@ -9,6 +9,7 @@ use tokio::task::spawn_blocking;
 pub use types::{ChatSummary, IncomingMessage, ListenTarget, Platform};
 
 pub trait WeChatAutomation {
+    #[allow(dead_code)]
     fn platform(&self) -> Platform;
     fn list_recent_chats(&self) -> Result<Vec<ChatSummary>>;
     fn start_listening(&self, targets: Vec<ListenTarget>) -> Result<()>;
@@ -20,17 +21,20 @@ pub trait WeChatAutomation {
 pub fn build_platform_automation() -> Option<Arc<dyn WeChatAutomation + Send + Sync>> {
     #[cfg(target_os = "windows")]
     {
-        return windows::WindowsAutomation::new()
+        windows::WindowsAutomation::new()
             .ok()
-            .map(|automation| Arc::new(automation) as Arc<dyn WeChatAutomation + Send + Sync>);
+            .map(|automation| Arc::new(automation) as Arc<dyn WeChatAutomation + Send + Sync>)
     }
     #[cfg(target_os = "macos")]
     {
-        return macos::MacosAutomation::new()
+        macos::MacosAutomation::new()
             .ok()
-            .map(|automation| Arc::new(automation) as Arc<dyn WeChatAutomation + Send + Sync>);
+            .map(|automation| Arc::new(automation) as Arc<dyn WeChatAutomation + Send + Sync>)
     }
-    None
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        None
+    }
 }
 
 #[derive(Clone)]

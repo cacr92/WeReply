@@ -4,18 +4,22 @@ use std::collections::HashSet;
 use std::thread::sleep;
 use std::time::Duration;
 
+#[cfg(any(test, target_os = "macos"))]
 pub trait AxSessionListProvider {
     fn snapshot(&self) -> Vec<String>;
     fn scroll_down(&mut self) -> bool;
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct MockAxSessionList {
     pages: Vec<Vec<String>>,
     index: usize,
 }
 
+#[cfg(test)]
 impl MockAxSessionList {
+    #[allow(dead_code)]
     pub fn with_sessions(sessions: Vec<&str>) -> Self {
         Self {
             pages: vec![sessions.into_iter().map(|item| item.to_string()).collect()],
@@ -34,6 +38,7 @@ impl MockAxSessionList {
     }
 }
 
+#[cfg(test)]
 impl AxSessionListProvider for MockAxSessionList {
     fn snapshot(&self) -> Vec<String> {
         self.pages
@@ -51,6 +56,7 @@ impl AxSessionListProvider for MockAxSessionList {
     }
 }
 
+#[cfg(any(test, target_os = "macos"))]
 pub fn collect_recent_chats(provider: &mut dyn AxSessionListProvider) -> Result<Vec<ChatSummary>> {
     let mut seen = HashSet::new();
     let mut chats = Vec::new();

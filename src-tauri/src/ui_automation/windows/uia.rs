@@ -1,14 +1,18 @@
+#[cfg(test)]
 use super::element::WindowInfo;
 
+#[cfg(test)]
 pub trait UiaProvider {
     fn list_windows(&self) -> Vec<WindowInfo>;
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct MockUia {
     windows: Vec<WindowInfo>,
 }
 
+#[cfg(test)]
 impl MockUia {
     pub fn with_window(process_name: &str, title: &str) -> Self {
         Self {
@@ -16,18 +20,21 @@ impl MockUia {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_window(&mut self, hwnd: i64, process_name: &str, title: &str) {
         self.windows
             .push(WindowInfo::new(hwnd, process_name, title));
     }
 }
 
+#[cfg(test)]
 impl UiaProvider for MockUia {
     fn list_windows(&self) -> Vec<WindowInfo> {
         self.windows.clone()
     }
 }
 
+#[cfg(test)]
 pub fn find_wechat_hwnd(provider: &dyn UiaProvider) -> Option<i64> {
     provider
         .list_windows()
@@ -36,6 +43,7 @@ pub fn find_wechat_hwnd(provider: &dyn UiaProvider) -> Option<i64> {
         .map(|window| window.hwnd)
 }
 
+#[cfg(test)]
 fn is_wechat_process(name: &str) -> bool {
     let normalized = name.trim().to_ascii_lowercase();
     matches!(

@@ -1,18 +1,22 @@
+#[cfg(any(test, target_os = "windows"))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WatchMode {
     Event,
     Polling,
 }
 
+#[cfg(test)]
 pub struct MockWatcher {
     subscribe_ok: bool,
 }
 
+#[cfg(test)]
 impl MockWatcher {
     pub fn subscribe_fail() -> Self {
         Self { subscribe_ok: false }
     }
 
+    #[allow(dead_code)]
     pub fn subscribe_ok() -> Self {
         Self { subscribe_ok: true }
     }
@@ -35,8 +39,8 @@ pub mod uia {
     use uiautomation::{TreeScope, UIAutomation, UIElement};
 
     const MESSAGE_LIST_NAMES: [&str; 2] = [
-        "\u6d88\u606f",
-        "\u804a\u5929\u8bb0\u5f55",
+        "\u{6d88}\u{606f}",
+        "\u{804a}\u{5929}\u{8bb0}\u{5f55}",
     ];
 
     pub struct UiaMessageWatcher {

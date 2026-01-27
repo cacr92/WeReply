@@ -3,10 +3,6 @@ pub mod message_watch;
 pub mod input_box;
 pub mod session_list;
 
-pub use ax::{find_wechat_app, AxProvider, MockAx};
-pub use input_box::MockAxInputWriter;
-pub use message_watch::{MockAxWatcher, WatchMode};
-pub use session_list::{collect_recent_chats, AxSessionListProvider, MockAxSessionList};
 
 #[cfg(target_os = "macos")]
 pub use ax::AxClient;
@@ -22,7 +18,8 @@ mod tests;
 
 #[cfg(target_os = "macos")]
 mod automation {
-    use super::{collect_recent_chats, AxClient, AxInputWriter, AxMessageWatcher, AxSessionList};
+    use super::session_list::collect_recent_chats;
+    use super::{AxClient, AxInputWriter, AxMessageWatcher, AxSessionList};
     use crate::types::{ChatSummary, ListenTarget, Platform};
     use crate::ui_automation::{IncomingMessage, WeChatAutomation};
     use anyhow::{anyhow, Result};
@@ -105,7 +102,6 @@ mod automation {
         }
     }
 
-    pub use MacosAutomation;
 }
 
 #[cfg(target_os = "macos")]

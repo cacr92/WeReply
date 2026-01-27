@@ -1,18 +1,22 @@
+#[cfg(test)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WatchMode {
     Event,
     Polling,
 }
 
+#[cfg(test)]
 pub struct MockAxWatcher {
     subscribe_ok: bool,
 }
 
+#[cfg(test)]
 impl MockAxWatcher {
     pub fn subscribe_fail() -> Self {
         Self { subscribe_ok: false }
     }
 
+    #[allow(dead_code)]
     pub fn subscribe_ok() -> Self {
         Self { subscribe_ok: true }
     }
@@ -28,9 +32,10 @@ impl MockAxWatcher {
 
 #[cfg(target_os = "macos")]
 pub mod ax {
-    use super::WatchMode;
     use crate::ui_automation::macos::ax::{self, AxElement};
     use anyhow::{anyhow, Result};
+    #[cfg(test)]
+    use super::WatchMode;
 
     pub struct AxMessageWatcher {
         window: AxElement,
@@ -46,6 +51,8 @@ pub mod ax {
             })
         }
 
+        #[cfg(test)]
+        #[allow(dead_code)]
         pub fn start(&self) -> WatchMode {
             WatchMode::Polling
         }

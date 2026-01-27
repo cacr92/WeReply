@@ -633,7 +633,7 @@ fn infer_is_group(chat_id: &str, targets: &[ListenTarget]) -> bool {
     if let Some(target) = targets.iter().find(|target| target.name == chat_id) {
         return matches!(target.kind, crate::types::ChatKind::Group);
     }
-    chat_id.contains("\u7fa4")
+    chat_id.contains("\u{7fa4}")
 }
 
 fn initial_status() -> Status {

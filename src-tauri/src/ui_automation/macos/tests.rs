@@ -1,6 +1,6 @@
-use super::{
-    collect_recent_chats, find_wechat_app, MockAx, MockAxSessionList, MockAxWatcher, WatchMode,
-};
+use super::ax::{find_wechat_app, MockAx};
+use super::message_watch::{MockAxWatcher, WatchMode};
+use super::session_list::{collect_recent_chats, MockAxSessionList};
 
 #[test]
 fn ax_finds_wechat_app() {

@@ -1,21 +1,30 @@
+#[cfg(any(test, target_os = "windows"))]
 use crate::types::{ChatKind, ChatSummary};
+#[cfg(any(test, target_os = "windows"))]
 use anyhow::{anyhow, Result};
+#[cfg(any(test, target_os = "windows"))]
 use std::collections::HashSet;
+#[cfg(any(test, target_os = "windows"))]
 use std::thread::sleep;
+#[cfg(any(test, target_os = "windows"))]
 use std::time::Duration;
 
+#[cfg(any(test, target_os = "windows"))]
 pub trait SessionListProvider {
     fn snapshot(&self) -> Vec<String>;
     fn scroll_down(&mut self) -> bool;
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct MockSessionList {
     pages: Vec<Vec<String>>,
     index: usize,
 }
 
+#[cfg(test)]
 impl MockSessionList {
+    #[allow(dead_code)]
     pub fn with_sessions(sessions: Vec<&str>) -> Self {
         Self {
             pages: vec![sessions.into_iter().map(|item| item.to_string()).collect()],
@@ -34,6 +43,7 @@ impl MockSessionList {
     }
 }
 
+#[cfg(test)]
 impl SessionListProvider for MockSessionList {
     fn snapshot(&self) -> Vec<String> {
         self.pages
@@ -51,6 +61,7 @@ impl SessionListProvider for MockSessionList {
     }
 }
 
+#[cfg(any(test, target_os = "windows"))]
 pub fn collect_recent_chats(provider: &mut dyn SessionListProvider) -> Result<Vec<ChatSummary>> {
     let mut seen = HashSet::new();
     let mut chats = Vec::new();
@@ -101,10 +112,10 @@ pub mod uia {
     use uiautomation::inputs::Keyboard;
 
     const SESSION_LIST_NAMES: [&str; 4] = [
-        "\u4f1a\u8bdd",
-        "\u804a\u5929",
-        "\u804a\u5929\u8bb0\u5f55",
-        "\u6298\u53e0\u7684\u7fa4\u804a",
+        "\u{4f1a}\u{8bdd}",
+        "\u{804a}\u{5929}",
+        "\u{804a}\u{5929}\u{8bb0}\u{5f55}",
+        "\u{6298}\u{53e0}\u{7684}\u{7fa4}\u{804a}",
     ];
 
     pub struct UiaSessionList {

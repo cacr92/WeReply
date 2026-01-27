@@ -1,14 +1,17 @@
 use anyhow::{anyhow, Result};
 
+#[cfg(test)]
 pub trait AxProvider {
     fn bundle_ids(&self) -> Vec<String>;
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct MockAx {
     bundles: Vec<String>,
 }
 
+#[cfg(test)]
 impl MockAx {
     pub fn with_bundle(bundle_id: &str) -> Self {
         Self {
@@ -16,17 +19,20 @@ impl MockAx {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_bundle(&mut self, bundle_id: &str) {
         self.bundles.push(bundle_id.to_string());
     }
 }
 
+#[cfg(test)]
 impl AxProvider for MockAx {
     fn bundle_ids(&self) -> Vec<String> {
         self.bundles.clone()
     }
 }
 
+#[cfg(test)]
 pub fn find_wechat_app(provider: &dyn AxProvider) -> Option<String> {
     provider
         .bundle_ids()
@@ -35,24 +41,22 @@ pub fn find_wechat_app(provider: &dyn AxProvider) -> Option<String> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
 mod native {
     use super::*;
-    use core_foundation::array::CFArray;
-    use core_foundation::base::{CFRelease, CFRetain, TCFType};
+    use core_foundation::array::{CFArray, CFArrayRef};
+    use core_foundation::base::{CFRelease, CFRetain, CFTypeRef, TCFType};
     use core_foundation::dictionary::CFDictionary;
     use core_foundation::number::CFNumber;
-    use core_foundation::string::CFString;
-    use core_graphics::event::{CGEvent, CGEventFlags, CGEventSource, CGEventTapLocation, KeyCode};
-    use core_graphics::event_source::CGEventSourceStateID;
+    use core_foundation::string::{CFString, CFStringRef};
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, KeyCode};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use objc::{class, msg_send, sel, sel_impl};
     use objc::runtime::Object;
     use std::ffi::CString;
     use std::ptr;
 
     type AXUIElementRef = *const std::ffi::c_void;
-    type CFTypeRef = *const std::ffi::c_void;
-    type CFStringRef = *const std::ffi::c_void;
-    type CFArrayRef = *const std::ffi::c_void;
     type AXError = i32;
 
     const AX_SUCCESS: AXError = 0;
@@ -77,6 +81,11 @@ mod native {
     pub struct AxElement {
         element: AXUIElementRef,
     }
+
+    // SAFETY: AXUIElementRef is a Core Foundation object; we retain/release
+    // and only use it via system APIs.
+    unsafe impl Send for AxElement {}
+    unsafe impl Sync for AxElement {}
 
     impl Clone for AxElement {
         fn clone(&self) -> Self {
@@ -114,6 +123,7 @@ mod native {
     }
 
     pub struct AxClient {
+        #[allow(dead_code)]
         pid: i32,
         app: AxElement,
     }
@@ -132,10 +142,12 @@ mod native {
             Err(anyhow!("WeChat app not running"))
         }
 
+        #[allow(dead_code)]
         pub fn app(&self) -> &AxElement {
             &self.app
         }
 
+        #[allow(dead_code)]
         pub fn pid(&self) -> i32 {
             self.pid
         }
@@ -215,7 +227,8 @@ mod native {
         let array = unsafe { CFArray::<CFTypeRef>::wrap_under_get_rule(value as CFArrayRef) };
         let mut results = Vec::new();
         for item in array.iter() {
-            if let Some(element) = AxElement::from_raw(item as AXUIElementRef) {
+            let raw = *item as AXUIElementRef;
+            if let Some(element) = AxElement::from_raw(raw) {
                 results.push(element);
             }
         }
@@ -362,8 +375,6 @@ mod native {
         }
     }
 
-    pub use AxClient;
-    pub use AxElement;
 }
 
 #[cfg(target_os = "macos")]

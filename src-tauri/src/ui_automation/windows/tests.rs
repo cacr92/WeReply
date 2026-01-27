@@ -1,5 +1,7 @@
-use super::{find_wechat_hwnd, MockUia};
-use super::{collect_recent_chats, MockInputWriter, MockSessionList, MockWatcher, WatchMode};
+use super::input_box::MockInputWriter;
+use super::message_watch::{MockWatcher, WatchMode};
+use super::session_list::{collect_recent_chats, MockSessionList};
+use super::uia::{find_wechat_hwnd, MockUia};
 
 #[test]
 fn uia_finds_wechat_main_window_by_process_name() {
