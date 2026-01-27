@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { message, Modal } from "antd";
+import { Modal } from "antd";
 import "./App.css";
 import type {
   DeepseekDiagnostics,
@@ -37,6 +37,7 @@ import {
 import { filterRecentChats, type RecentChat } from "./utils/recentChats";
 import { normalizeReplyText } from "./utils/reply";
 import { createStatusState, statusReducer } from "./utils/status";
+import { notify } from "./utils/notify";
 
 const DEFAULT_STATUS: Status = {
   state: "idle",
@@ -120,7 +121,7 @@ function App() {
       },
     );
     const unlistenError = listen<ErrorPayload>("error.raised", (event) => {
-      message.error(event.payload.message);
+      notify.error("发生错误", { detail: event.payload.message });
     });
 
     return () => {
@@ -137,10 +138,10 @@ function App() {
       if (res.success && Array.isArray(res.data)) {
         setRecentChats(res.data as RecentChat[]);
       } else {
-        message.error(res.message || "会话列表获取失败");
+        notify.error("会话列表获取失败", { detail: res.message });
       }
     } catch (err) {
-      message.error("会话列表获取失败");
+      notify.error("会话列表获取失败");
     }
     setRecentLoading(false);
   }, []);
@@ -181,7 +182,9 @@ function App() {
     async (targets: ListenTarget[], showToast: boolean) => {
       const normalized = normalizeListenTargetList(targets);
       if (normalized.length > MAX_LISTEN_TARGETS) {
-        message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
+        notify.warning("监听对象已达上限", {
+          detail: `最多 ${MAX_LISTEN_TARGETS} 个`,
+        });
         return false;
       }
       const res = await commands.setListenTargets(normalized);
@@ -189,11 +192,11 @@ function App() {
         setListenTargets(normalized);
         setListenDirty(false);
         if (showToast) {
-          message.success("监听对象已保存");
+          notify.success("监听对象已保存");
         }
         return true;
       }
-      message.error(res.message || "监听对象保存失败");
+      notify.error("监听对象保存失败", { detail: res.message });
       return false;
     },
     [setListenTargets, setListenDirty],
@@ -209,11 +212,13 @@ function App() {
         { name, kind: chat.kind },
       ]);
       if (merged.length === listenTargets.length) {
-        message.info("已在监听列表中");
+        notify.info("已在监听列表中");
         return;
       }
       if (merged.length > MAX_LISTEN_TARGETS) {
-        message.warning(`监听对象最多 ${MAX_LISTEN_TARGETS} 个`);
+        notify.warning("监听对象已达上限", {
+          detail: `最多 ${MAX_LISTEN_TARGETS} 个`,
+        });
         return;
       }
       setListenTargets(merged);
@@ -224,14 +229,14 @@ function App() {
 
   const handleAddSelectedRecentTarget = useCallback(() => {
     if (!selectedRecentChatId) {
-      message.warning("请选择最近会话");
+      notify.warning("请选择最近会话");
       return;
     }
     const selected = recentChats.find(
       (chat) => chat.chat_id === selectedRecentChatId,
     );
     if (!selected) {
-      message.warning("请选择最近会话");
+      notify.warning("请选择最近会话");
       return;
     }
     handleAddRecentTarget(selected);
@@ -249,7 +254,7 @@ function App() {
 
   const handleStart = useCallback(async () => {
     if (listenTargets.length === 0) {
-      message.warning("请先选择监听对象");
+      notify.warning("请先选择监听对象");
       setListenModalOpen(true);
       return;
     }
@@ -262,9 +267,9 @@ function App() {
     const res = await commands.startListening();
     if (res.success) {
       dispatchStatus({ type: "optimistic", state: "listening", last_error: "" });
-      message.success("开始监听");
+      notify.success("开始监听");
     } else {
-      message.error(res.message || "启动失败");
+      notify.error("启动失败", { detail: res.message });
     }
   }, [listenDirty, listenTargets, saveListenTargets, setSettingsOpen]);
 
@@ -272,28 +277,28 @@ function App() {
     const res = await commands.stopListening();
     if (res.success) {
       dispatchStatus({ type: "optimistic", state: "idle", last_error: "" });
-      message.success("已停止");
+      notify.success("已停止");
     } else {
-      message.error(res.message || "停止失败");
+      notify.error("停止失败", { detail: res.message });
     }
   }, []);
 
   const handleInsertSuggestion = useCallback(
     async (suggestion: Suggestion) => {
       if (!lastChatId) {
-        message.warning("暂无可写入的聊天");
+        notify.warning("暂无可写入的聊天");
         return;
       }
       const normalized = normalizeReplyText(suggestion.text);
       if (!normalized.ok) {
-        message.warning(normalized.reason);
+        notify.warning("回复内容不可用", { detail: normalized.reason });
         return;
       }
       const res = await commands.writeSuggestion(lastChatId, normalized.text);
       if (res.success) {
-        message.success("已写入输入框");
+        notify.success("已写入输入框");
       } else {
-        message.error(res.message || "写入失败");
+        notify.error("写入失败", { detail: res.message });
       }
     },
     [lastChatId],
@@ -301,7 +306,7 @@ function App() {
 
   const handleSaveApiKey = useCallback(async () => {
     if (!apiKeyInput.trim()) {
-      message.warning("请输入 API 密钥");
+      notify.warning("请输入 API 密钥");
       return;
     }
     setApiKeyStatus("connecting");
@@ -315,7 +320,7 @@ function App() {
         setApiKeyInput("");
       }
       if (outcome.status === "connected") {
-        message.success(outcome.message);
+        notify.success(outcome.message);
         setModelLoading(true);
         const previousModel = selectedModel;
         try {
@@ -328,49 +333,49 @@ function App() {
             if (selection.changed) {
               const saveRes = await commands.setDeepseekModel(selection.selected);
               if (!saveRes.success) {
-                message.error(saveRes.message || "模型保存失败");
+                notify.error("模型保存失败", { detail: saveRes.message });
                 setSelectedModel(previousModel);
               }
             }
           } else {
-            message.warning(modelsRes.message || "模型列表获取失败，使用默认模型");
+            notify.warning(modelsRes.message || "模型列表获取失败，使用默认模型");
             setModels(DEFAULT_MODELS);
           }
         } catch (err) {
-          message.error("模型列表获取失败");
+          notify.error("模型列表获取失败");
           setModels(DEFAULT_MODELS);
         } finally {
           setModelLoading(false);
         }
       } else {
-        message.error(outcome.message);
+        notify.error(outcome.message, { fallback: "" });
       }
     } catch (err) {
       const outcome = resolveApiKeySaveOutcome(null, err);
       setApiKeyStatus(outcome.status);
       setApiKeySet(outcome.apiKeySet);
       setApiKeyError(outcome.message);
-      message.error(outcome.message);
+      notify.error(outcome.message, { fallback: "" });
     }
   }, [apiKeyInput, selectedModel]);
 
   const handleDeleteApiKey = useCallback(async () => {
     const res = await commands.deleteApiKey();
     if (res.success) {
-      message.success("API 密钥已删除");
+      notify.success("API 密钥已删除");
       setApiKeySet(false);
       setApiKeyStatus("idle");
       setDiagnostics(null);
       setApiKeyError(null);
     } else {
-      message.error(res.message || "删除失败");
+      notify.error("删除失败", { detail: res.message });
     }
   }, []);
 
   const handleDiagnose = useCallback(async () => {
     const trimmed = apiKeyInput.trim();
     if (!trimmed && !apiKeySet) {
-      message.warning("请先输入或保存 API 密钥");
+      notify.warning("请先输入或保存 API 密钥");
       return;
     }
     setDiagnosing(true);
@@ -381,21 +386,23 @@ function App() {
         setDiagnosticsError(null);
         const summary = summarizeDiagnostics(res.data);
         if (summary.ok) {
-          message.success(summary.message);
+          notify.success(summary.message);
         } else {
-          message.error(summary.message);
+          notify.error(summary.message, { fallback: "" });
         }
       } else {
-        const messageText = res.message || "连接诊断失败";
+        const detail = res.message;
+        const messageText = detail || "连接诊断失败";
         setDiagnostics(null);
         setDiagnosticsError(messageText);
-        message.error(messageText);
+        notify.error("连接诊断失败", { detail });
       }
     } catch (err) {
-      const fallback = err instanceof Error ? err.message : "连接诊断失败";
+      const detail = err instanceof Error ? err.message : undefined;
+      const fallback = detail || "连接诊断失败";
       setDiagnostics(null);
       setDiagnosticsError(fallback);
-      message.error(fallback);
+      notify.error("连接诊断失败", { detail });
     } finally {
       setDiagnosing(false);
     }
@@ -408,7 +415,7 @@ function App() {
       setSelectedModel(nextModel);
       const res = await commands.setDeepseekModel(nextModel);
       if (!res.success) {
-        message.error(res.message || "模型保存失败");
+        notify.error("模型保存失败", { detail: res.message });
         setSelectedModel(previous);
       }
     },
