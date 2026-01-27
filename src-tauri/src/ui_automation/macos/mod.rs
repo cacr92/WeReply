@@ -1,4 +1,6 @@
 pub mod ax;
+#[cfg(target_os = "macos")]
+pub mod db;
 pub mod message_watch;
 pub mod input_box;
 pub mod session_list;
@@ -18,6 +20,7 @@ mod tests;
 
 #[cfg(target_os = "macos")]
 mod automation {
+    use super::db::MacosDb;
     use super::session_list::collect_recent_chats;
     use super::{AxClient, AxInputWriter, AxMessageWatcher, AxSessionList};
     use crate::types::{ChatSummary, ListenTarget, Platform};
@@ -27,23 +30,42 @@ mod automation {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     pub struct MacosAutomation {
-        client: AxClient,
+        client: Option<AxClient>,
+        db: Option<MacosDb>,
         watcher: Mutex<Option<AxMessageWatcher>>,
     }
 
     impl MacosAutomation {
         pub fn new() -> Result<Self> {
-            if !super::ax::check_accessibility() {
-                return Err(anyhow!("Accessibility permission required"));
+            let db = MacosDb::discover().ok();
+            let client = if super::ax::check_accessibility() {
+                AxClient::new().ok()
+            } else {
+                None
+            };
+            if db.is_none() && client.is_none() {
+                return Err(anyhow!("WeChat automation unavailable"));
             }
             Ok(Self {
-                client: AxClient::new()?,
+                client,
+                db,
                 watcher: Mutex::new(None),
             })
         }
 
         fn list_chats(&self) -> Result<Vec<ChatSummary>> {
-            let window = self.client.front_window().ok_or_else(|| anyhow!("WeChat window not found"))?;
+            if let Some(db) = self.db.as_ref() {
+                if let Ok(chats) = db.list_recent_chats() {
+                    return Ok(chats);
+                }
+            }
+            let client = self
+                .client
+                .as_ref()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
+            let window = client
+                .front_window()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
             let mut list = AxSessionList::from_window(&window)?;
             collect_recent_chats(&mut list)
         }
@@ -59,11 +81,18 @@ mod automation {
         }
 
         fn start_listening(&self, _targets: Vec<ListenTarget>) -> Result<()> {
-            let window = self.client.front_window().ok_or_else(|| anyhow!("WeChat window not found"))?;
-            let watcher = AxMessageWatcher::new(&window)?;
-            let mut guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
-            *guard = Some(watcher);
-            Ok(())
+            if let Some(client) = self.client.as_ref() {
+                if let Some(window) = client.front_window() {
+                    let watcher = AxMessageWatcher::new(&window)?;
+                    let mut guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
+                    *guard = Some(watcher);
+                    return Ok(());
+                }
+            }
+            if self.db.is_some() {
+                return Ok(());
+            }
+            Err(anyhow!("WeChat window not found"))
         }
 
         fn stop_listening(&self) -> Result<()> {
@@ -73,12 +102,23 @@ mod automation {
         }
 
         fn write_input(&self, _chat_id: &str, text: &str) -> Result<()> {
-            let window = self.client.front_window().ok_or_else(|| anyhow!("WeChat window not found"))?;
+            let client = self
+                .client
+                .as_ref()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
+            let window = client
+                .front_window()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
             let writer = AxInputWriter::new(&window);
             writer.write(text)
         }
 
         fn poll_latest_message(&self) -> Result<Option<IncomingMessage>> {
+            if let Some(db) = self.db.as_ref() {
+                if let Ok(Some(message)) = db.poll_latest_message() {
+                    return Ok(Some(message));
+                }
+            }
             let guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
             let Some(watcher) = guard.as_ref() else {
                 return Ok(None);

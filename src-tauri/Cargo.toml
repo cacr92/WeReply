@@ -43,6 +43,7 @@ windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsA
 objc = "0.2"
 core-foundation = "0.9"
 core-graphics = "0.23"
+rusqlite = { version = "0.38.0", features = ["bundled-sqlcipher-vendored-openssl", "sqlcipher"] }
 
 [dev-dependencies]
 tempfile = "3"
