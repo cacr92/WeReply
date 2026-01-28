@@ -1,5 +1,19 @@
 use anyhow::{anyhow, Result};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl AxRect {
+    pub fn center_x(&self) -> f64 {
+        self.x + (self.width / 2.0)
+    }
+}
+
 #[cfg(test)]
 pub trait AxProvider {
     fn bundle_ids(&self) -> Vec<String>;
@@ -49,17 +63,22 @@ mod native {
     use core_foundation::dictionary::CFDictionary;
     use core_foundation::number::CFNumber;
     use core_foundation::string::{CFString, CFStringRef};
+    use core_graphics::geometry::{CGPoint, CGRect, CGSize};
     use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, KeyCode};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use objc::{class, msg_send, sel, sel_impl};
     use objc::runtime::Object;
     use std::ffi::CString;
     use std::ptr;
+    use std::ffi::c_void;
 
     type AXUIElementRef = *const std::ffi::c_void;
+    type AXValueRef = *const std::ffi::c_void;
+    type AXValueType = i32;
     type AXError = i32;
 
     const AX_SUCCESS: AXError = 0;
+    const AX_VALUE_CGRECT: AXValueType = 3;
 
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
@@ -75,6 +94,8 @@ mod native {
             value: CFTypeRef,
         ) -> AXError;
         fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> bool;
+        fn AXValueGetType(value: AXValueRef) -> AXValueType;
+        fn AXValueGetValue(value: AXValueRef, the_type: AXValueType, value_ptr: *mut c_void) -> bool;
     }
 
     #[derive(Debug)]
@@ -296,6 +317,12 @@ mod native {
         None
     }
 
+    pub fn collect_static_texts(element: &AxElement, depth: usize) -> Vec<String> {
+        let mut results = Vec::new();
+        collect_static_texts_inner(element, depth, &mut results);
+        results
+    }
+
     pub fn find_input_element(root: &AxElement, depth: usize) -> Option<AxElement> {
         if depth == 0 {
             return None;
@@ -311,6 +338,32 @@ mod native {
             }
         }
         None
+    }
+
+    pub fn frame(element: &AxElement) -> Option<AxRect> {
+        let value = copy_attribute_value(element, &cfstr("AXFrame"))?;
+        let value_ref = value as AXValueRef;
+        let value_type = unsafe { AXValueGetType(value_ref) };
+        if value_type != AX_VALUE_CGRECT {
+            return None;
+        }
+        let mut rect = CGRect::new(&CGPoint::new(0.0, 0.0), &CGSize::new(0.0, 0.0));
+        let ok = unsafe {
+            AXValueGetValue(
+                value_ref,
+                AX_VALUE_CGRECT,
+                &mut rect as *mut _ as *mut c_void,
+            )
+        };
+        if !ok {
+            return None;
+        }
+        Some(AxRect {
+            x: rect.origin.x,
+            y: rect.origin.y,
+            width: rect.size.width,
+            height: rect.size.height,
+        })
     }
 
     pub fn set_input_value(element: &AxElement, text: &str) -> Result<()> {
@@ -347,6 +400,23 @@ mod native {
 
     fn cfstr(value: &str) -> CFString {
         CFString::new(value)
+    }
+
+    fn collect_static_texts_inner(element: &AxElement, depth: usize, results: &mut Vec<String>) {
+        if depth == 0 {
+            return;
+        }
+        if role(element).as_deref() == Some("AXStaticText") {
+            if let Some(value) = value(element) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    results.push(trimmed.to_string());
+                }
+            }
+        }
+        for child in children(element) {
+            collect_static_texts_inner(&child, depth - 1, results);
+        }
     }
 
     fn walk(element: &AxElement, depth: usize, visit: &mut impl FnMut(&AxElement)) {
