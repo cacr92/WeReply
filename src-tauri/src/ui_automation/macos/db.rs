@@ -5,11 +5,22 @@ use anyhow::{anyhow, Context, Result};
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 const WECHAT_CONTAINER_DIR: &str =
     "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files";
+const FRIDA_BIN_ENV: &str = "WEREPLY_FRIDA_BIN";
+const FRIDA_PROCESS_ENV: &str = "WEREPLY_WECHAT_PROCESS";
+const FRIDA_PID_ENV: &str = "WEREPLY_WECHAT_PID";
+const FRIDA_TIMEOUT: Duration = Duration::from_secs(4);
+const FRIDA_PBKDF_TIMEOUT: Duration = Duration::from_secs(120);
+const FRIDA_RETRY_COOLDOWN: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Default, Clone)]
 struct DbCursor {
@@ -23,6 +34,7 @@ pub struct MacosDb {
     key_info_db: PathBuf,
     key: Mutex<Option<Vec<u8>>>,
     cursor: Mutex<DbCursor>,
+    last_frida_attempt: Mutex<Option<Instant>>,
 }
 
 impl MacosDb {
@@ -38,6 +50,7 @@ impl MacosDb {
             key_info_db,
             key: Mutex::new(None),
             cursor: Mutex::new(DbCursor::default()),
+            last_frida_attempt: Mutex::new(None),
         })
     }
 
@@ -163,6 +176,26 @@ impl MacosDb {
                 }
             }
         }
+        if self.should_attempt_frida()? {
+            match fetch_wechat_db_key_via_frida() {
+                Ok(key) => {
+                    if can_open_db(&self.session_db, &key) {
+                        let encoded = encode_hex(&key);
+                        let _ = ApiKeyManager::set_wechat_db_key(&encoded);
+                        *self.key.lock().map_err(|_| anyhow!("key lock poisoned"))? = Some(key.clone());
+                        info!("WeChat 数据库密钥已写入系统密钥链");
+                        return Ok(key);
+                    }
+                    warn!("Frida 获取到的密钥无法解密 session.db");
+                }
+                Err(err) => {
+                    warn!("Frida 获取 WeChat 密钥失败: {}", err);
+                    if sip_enabled() == Some(true) {
+                        warn!("检测到 SIP 已启用，Frida 注入可能失败");
+                    }
+                }
+            }
+        }
         let candidates = extract_key_candidates_from_db(&self.key_info_db)?;
         for candidate in candidates {
             if can_open_db(&self.session_db, &candidate) {
@@ -183,8 +216,314 @@ impl MacosDb {
             key_info_db: PathBuf::new(),
             key: Mutex::new(Some(key)),
             cursor: Mutex::new(DbCursor::default()),
+            last_frida_attempt: Mutex::new(None),
         }
     }
+}
+
+impl MacosDb {
+    fn should_attempt_frida(&self) -> Result<bool> {
+        let mut guard = self
+            .last_frida_attempt
+            .lock()
+            .map_err(|_| anyhow!("frida attempt lock poisoned"))?;
+        if let Some(last) = *guard {
+            if last.elapsed() < FRIDA_RETRY_COOLDOWN {
+                return Ok(false);
+            }
+        }
+        *guard = Some(Instant::now());
+        Ok(true)
+    }
+}
+
+fn fetch_wechat_db_key_via_frida() -> Result<Vec<u8>> {
+    let frida = resolve_frida_binary().context("未找到 frida 可执行文件")?;
+    let target = resolve_frida_target();
+    let output = run_frida_script(&frida, &target, frida_db_encrypt_script(), FRIDA_TIMEOUT)?;
+    let key = match extract_key_from_frida_output(&output) {
+        Ok(key) => key,
+        Err(_) => {
+            let output =
+                run_frida_script(&frida, &target, frida_pbkdf_script(), FRIDA_PBKDF_TIMEOUT)?;
+            extract_key_from_frida_output(&output)?
+        }
+    };
+    if key.len() != 16 && key.len() != 32 {
+        return Err(anyhow!("Frida 输出的密钥长度异常"));
+    }
+    Ok(key)
+}
+
+enum FridaTarget {
+    Pid(u32),
+    Name(String),
+}
+
+fn resolve_frida_target() -> FridaTarget {
+    if let Ok(pid) = std::env::var(FRIDA_PID_ENV) {
+        if let Ok(parsed) = pid.parse::<u32>() {
+            return FridaTarget::Pid(parsed);
+        }
+    }
+    if let Some(pid) = resolve_wechat_pid_from_ps() {
+        return FridaTarget::Pid(pid);
+    }
+    FridaTarget::Name(wechat_process_name())
+}
+
+fn wechat_process_name() -> String {
+    std::env::var(FRIDA_PROCESS_ENV).unwrap_or_else(|_| "WeChat".to_string())
+}
+
+fn resolve_wechat_pid_from_ps() -> Option<u32> {
+    let output = Command::new("ps")
+        .args(["-ax", "-o", "pid=,comm="])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let patterns = [
+        "WeChatDebug.app/Contents/MacOS/WeChatAppEx",
+        "WeChat.app/Contents/MacOS/WeChatAppEx",
+        "WeChatDebug.app/Contents/MacOS/WeChat",
+        "WeChat.app/Contents/MacOS/WeChat",
+    ];
+    for pattern in patterns {
+        for line in text.lines() {
+            if line.contains(pattern) {
+                if let Some(pid) = parse_ps_pid(line) {
+                    return Some(pid);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_ps_pid(line: &str) -> Option<u32> {
+    let mut parts = line.split_whitespace();
+    let pid = parts.next()?;
+    pid.parse::<u32>().ok()
+}
+
+fn resolve_frida_binary() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var(FRIDA_BIN_ENV) {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    if let Some(path) = find_in_path("frida") {
+        return Some(path);
+    }
+    let mut candidates = Vec::new();
+    candidates.push(PathBuf::from("/opt/homebrew/bin/frida"));
+    candidates.push(PathBuf::from("/usr/local/bin/frida"));
+    if let Ok(home) = std::env::var("HOME") {
+        for ver in ["3.12", "3.11", "3.10", "3.9"] {
+            candidates.push(PathBuf::from(&home).join(format!("Library/Python/{ver}/bin/frida")));
+        }
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn sip_enabled() -> Option<bool> {
+    let output = Command::new("csrutil").arg("status").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    if text.contains("enabled") {
+        return Some(true);
+    }
+    if text.contains("disabled") {
+        return Some(false);
+    }
+    None
+}
+
+fn find_in_path(binary: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(binary);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn frida_db_encrypt_script() -> &'static str {
+    r#"
+if (ObjC.available) {
+  var cls = ObjC.classes.DBEncryptInfo;
+  if (cls) {
+    var inst = ObjC.chooseSync(cls)[0];
+    if (inst) {
+      var data = inst['- m_dbEncryptKey']();
+      if (data) {
+        console.log(hexdump(data.bytes(), { offset: 0, length: data.length(), header: false, ansi: false }));
+      }
+    }
+  }
+}
+"#
+}
+
+fn frida_pbkdf_script() -> &'static str {
+    r#"
+var CCKeyDerivationPBKDF = Module.findExportByName('libcommonCrypto.dylib', 'CCKeyDerivationPBKDF');
+if (CCKeyDerivationPBKDF) {
+  Interceptor.attach(CCKeyDerivationPBKDF, {
+    onEnter: function(args) {
+      var algorithm = args[0].toInt32();
+      var passwordPtr = args[1];
+      var passwordLen = args[2].toInt32();
+      var rounds = args[6].toInt32();
+      var derivedKeyLen = args[8].toInt32();
+      if (algorithm === 2 && derivedKeyLen === 32 && rounds >= 64000 && passwordLen > 0 && passwordLen <= 64) {
+        var bytes = [];
+        for (var i = 0; i < passwordLen; i++) {
+          bytes.push(passwordPtr.add(i).readU8());
+        }
+        var hex = bytes.map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+        console.log('WECHAT_DB_KEY:' + hex);
+      }
+    }
+  });
+}
+"#
+}
+
+fn run_frida_script(
+    frida: &Path,
+    target: &FridaTarget,
+    script: &str,
+    timeout: Duration,
+) -> Result<String> {
+    let mut cmd = Command::new(frida);
+    match target {
+        FridaTarget::Pid(pid) => {
+            cmd.arg("-p").arg(pid.to_string());
+        }
+        FridaTarget::Name(name) => {
+            cmd.arg("-n").arg(name);
+        }
+    }
+    cmd.arg("-e")
+        .arg(script)
+        .arg("-q")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().context("启动 frida 失败")?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("无法读取 frida stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow!("无法读取 frida stderr"))?;
+    let (tx, rx) = mpsc::channel();
+    let stdout_handle = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let _ = tx.send(line.clone());
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut buf = String::new();
+        let _ = reader.read_to_string(&mut buf);
+        buf
+    });
+    let start = Instant::now();
+    let mut stdout_buf = String::new();
+    loop {
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            break;
+        }
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(line) => {
+                stdout_buf.push_str(&line);
+                if extract_key_from_frida_output(&stdout_buf).is_ok() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Some(_status) = child.try_wait()? {
+                    break;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                break;
+            }
+        }
+    }
+    let _ = stdout_handle.join();
+    let stderr_buf = stderr_handle.join().unwrap_or_default();
+    if stdout_buf.trim().is_empty() {
+        return Err(anyhow!(
+            "frida 未输出密钥信息，stderr: {}",
+            stderr_buf.trim()
+        ));
+    }
+    Ok(stdout_buf)
+}
+
+fn extract_key_from_frida_output(output: &str) -> Result<Vec<u8>> {
+    if let Some(key) = extract_key_from_line(output, "WECHAT_DB_KEY:")? {
+        return Ok(key);
+    }
+    if let Some(key) = extract_key_from_line(output, "RAW KEY CAPTURED:")? {
+        return Ok(key);
+    }
+    let mut bytes = Vec::new();
+    for token in output.split_whitespace() {
+        if token.len() == 2 && token.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            let value = u8::from_str_radix(token, 16)
+                .map_err(|_| anyhow!("frida 输出含有非法 hex"))?;
+            bytes.push(value);
+        }
+    }
+    if bytes.len() >= 32 {
+        bytes.truncate(32);
+        return Ok(bytes);
+    }
+    if bytes.len() >= 16 {
+        bytes.truncate(16);
+        return Ok(bytes);
+    }
+    Err(anyhow!("frida 输出未包含有效密钥"))
+}
+
+fn extract_key_from_line(output: &str, marker: &str) -> Result<Option<Vec<u8>>> {
+    for line in output.lines() {
+        if let Some(pos) = line.find(marker) {
+            let hex = line[pos + marker.len()..].trim();
+            if hex.is_empty() {
+                continue;
+            }
+            let key = decode_hex(hex)?;
+            return Ok(Some(key));
+        }
+    }
+    Ok(None)
 }
 
 fn wechat_data_root() -> Option<PathBuf> {
@@ -252,6 +591,7 @@ fn resolve_message_dbs(user_root: &Path) -> Result<Vec<PathBuf>> {
 
 fn open_sqlcipher_readonly(path: &Path, key: &[u8]) -> Result<Connection> {
     let params = [
+        SqlcipherParams::new(4, Some(256000), Some(4096)),
         SqlcipherParams::new(4, None, None),
         SqlcipherParams::new(4, Some(64000), Some(4096)),
         SqlcipherParams::new(3, Some(64000), Some(1024)),
@@ -621,5 +961,36 @@ mod tests {
         assert_eq!(message.text, "latest");
         let none = db.poll_latest_message().unwrap();
         assert!(none.is_none());
+    }
+
+    #[test]
+    fn parse_frida_output_extracts_key() {
+        let expected: Vec<u8> = (0u8..32).collect();
+        let mut output = String::new();
+        for (idx, byte) in expected.iter().enumerate() {
+            output.push_str(&format!("{:02x}", byte));
+            if idx % 16 == 15 {
+                output.push('\n');
+            } else {
+                output.push(' ');
+            }
+        }
+        let key = extract_key_from_frida_output(&output).unwrap();
+        assert_eq!(key, expected);
+    }
+
+    #[test]
+    fn parse_frida_output_rejects_invalid() {
+        let err = extract_key_from_frida_output("no key here").unwrap_err();
+        assert!(err.to_string().contains("frida 输出未包含有效密钥"));
+    }
+
+    #[test]
+    fn parse_frida_output_reads_raw_key_line() {
+        let expected: Vec<u8> = (1u8..33).collect();
+        let hex = encode_hex(&expected);
+        let output = format!("WECHAT_DB_KEY: {hex}");
+        let key = extract_key_from_frida_output(&output).unwrap();
+        assert_eq!(key, expected);
     }
 }
