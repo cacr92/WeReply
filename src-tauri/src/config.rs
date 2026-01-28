@@ -104,15 +104,19 @@ mod tests {
 
     #[test]
     fn validate_config_rejects_invalid_values() {
-        let mut config = Config::default();
-        config.suggestion_count = 0;
+        let config = Config {
+            suggestion_count: 0,
+            ..Config::default()
+        };
         assert!(validate_config(&config).is_err());
     }
 
     #[test]
     fn validate_config_rejects_unknown_model() {
-        let mut config = Config::default();
-        config.deepseek_model = "unknown".to_string();
+        let config = Config {
+            deepseek_model: "unknown".to_string(),
+            ..Config::default()
+        };
         assert!(validate_config(&config).is_err());
     }
 }

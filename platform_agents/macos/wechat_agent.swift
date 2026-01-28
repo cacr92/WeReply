@@ -20,9 +20,60 @@ private final class AgentState {
     var lastMessageKeys: [String: String] = [:]
     var pending: [String: PendingMessage] = [:]
     var listenTargets: [String: String] = [:]
+    var cachedMessageLists: [String: AXUIElement] = [:]
+    var cachedSessionLists: [String: AXUIElement] = [:]
+    var cachedInputs: [String: AXUIElement] = [:]
 }
 
 private let state = AgentState()
+
+private struct AxPathStep {
+    let roles: [String]
+    let index: Int
+    let titleContains: String?
+}
+
+private let sessionListPaths: [[AxPathStep]] = [
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXScrollArea"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXOutline", "AXTable", "AXList"], index: 0, titleContains: nil),
+    ],
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXOutline", "AXTable", "AXList"], index: 0, titleContains: nil),
+    ],
+]
+
+private let messageListPaths: [[AxPathStep]] = [
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 1, titleContains: nil),
+        AxPathStep(roles: ["AXScrollArea"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXList", "AXTable", "AXOutline"], index: 0, titleContains: nil),
+    ],
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 1, titleContains: nil),
+        AxPathStep(roles: ["AXList", "AXTable", "AXOutline"], index: 0, titleContains: nil),
+    ],
+]
+
+private let inputPaths: [[AxPathStep]] = [
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 1, titleContains: nil),
+        AxPathStep(roles: ["AXTextArea", "AXTextField"], index: 0, titleContains: nil),
+    ],
+    [
+        AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 1, titleContains: nil),
+        AxPathStep(roles: ["AXGroup"], index: 0, titleContains: nil),
+        AxPathStep(roles: ["AXTextArea", "AXTextField"], index: 0, titleContains: nil),
+    ],
+]
 
 private func jsonString(_ object: Any) -> String? {
     guard JSONSerialization.isValidJSONObject(object) else { return nil }
@@ -126,6 +177,105 @@ private func elementChildren(_ element: AXUIElement) -> [AXUIElement] {
     return elementAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] ?? []
 }
 
+private func elementTitle(_ element: AXUIElement) -> String? {
+    return elementAttribute(element, kAXTitleAttribute as CFString) as? String
+}
+
+private func allowDynamicScan() -> Bool {
+    return ProcessInfo.processInfo.environment["WEREPLY_ALLOW_DYNAMIC_AX_SCAN"] == "1"
+}
+
+private func resolvePath(from element: AXUIElement, steps: [AxPathStep]) -> AXUIElement? {
+    var current: AXUIElement? = element
+    for step in steps {
+        guard let currentElement = current else { return nil }
+        let children = elementChildren(currentElement)
+        var matches: [AXUIElement] = []
+        for child in children {
+            guard let role = elementRole(child), step.roles.contains(role) else { continue }
+            if let substr = step.titleContains {
+                let title = elementTitle(child) ?? ""
+                if !title.contains(substr) { continue }
+            }
+            matches.append(child)
+        }
+        if step.index < 0 || step.index >= matches.count {
+            return nil
+        }
+        current = matches[step.index]
+    }
+    return current
+}
+
+private func resolveAnyPath(from element: AXUIElement, paths: [[AxPathStep]]) -> AXUIElement? {
+    for path in paths {
+        if let found = resolvePath(from: element, steps: path) {
+            return found
+        }
+    }
+    return nil
+}
+
+private func isElementValid(_ element: AXUIElement?) -> Bool {
+    guard let element else { return false }
+    return elementRole(element) != nil
+}
+
+private func pickRowText(_ texts: [String]) -> String? {
+    return texts
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .max(by: { $0.count < $1.count })
+}
+
+private func latestMessageText(in list: AXUIElement) -> String? {
+    var candidates: [String] = []
+    for row in elementChildren(list) {
+        var texts: [String] = []
+        collectStaticTexts(from: row, depth: 8, results: &texts)
+        if let text = pickRowText(texts) {
+            candidates.append(text)
+        }
+    }
+    return candidates.last
+}
+
+private func resolveSessionList(in window: AXUIElement, title: String) -> AXUIElement? {
+    if let cached = state.cachedSessionLists[title], isElementValid(cached) {
+        return cached
+    }
+    if let list = resolveAnyPath(from: window, paths: sessionListPaths) {
+        state.cachedSessionLists[title] = list
+        return list
+    }
+    state.cachedSessionLists.removeValue(forKey: title)
+    return nil
+}
+
+private func resolveMessageList(in window: AXUIElement, title: String) -> AXUIElement? {
+    if let cached = state.cachedMessageLists[title], isElementValid(cached) {
+        return cached
+    }
+    if let list = resolveAnyPath(from: window, paths: messageListPaths) {
+        state.cachedMessageLists[title] = list
+        return list
+    }
+    state.cachedMessageLists.removeValue(forKey: title)
+    return nil
+}
+
+private func resolveInputElement(in window: AXUIElement, title: String) -> AXUIElement? {
+    if let cached = state.cachedInputs[title], isElementValid(cached) {
+        return cached
+    }
+    if let input = resolveAnyPath(from: window, paths: inputPaths) {
+        state.cachedInputs[title] = input
+        return input
+    }
+    state.cachedInputs.removeValue(forKey: title)
+    return nil
+}
+
 private func collectStaticTexts(from element: AXUIElement, depth: Int, results: inout [String]) {
     guard depth > 0 else { return }
     if let role = elementRole(element),
@@ -170,6 +320,23 @@ private func collectSessionTitles(in list: AXUIElement) -> [String] {
 }
 
 private func findSessionTitles(in window: AXUIElement) -> [String] {
+    let title = windowTitle(window).trimmingCharacters(in: .whitespacesAndNewlines)
+    if let list = resolveSessionList(in: window, title: title) {
+        let titles = collectSessionTitles(in: list)
+        var seen = Set<String>()
+        return titles.filter { name in
+            if seen.contains(name) { return false }
+            seen.insert(name)
+            return true
+        }
+    }
+    if !allowDynamicScan() {
+        return []
+    }
+    return scanSessionTitles(in: window)
+}
+
+private func scanSessionTitles(in window: AXUIElement) -> [String] {
     var candidates: [[String]] = []
     func walk(_ element: AXUIElement, depth: Int) {
         guard depth > 0 else { return }
@@ -262,9 +429,17 @@ private func pollMessages() {
     for window in windows {
         let title = windowTitle(window).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let kind = targets[title] else { continue }
-        var texts: [String] = []
-        collectStaticTexts(from: window, depth: 6, results: &texts)
-        guard let latest = texts.last else { continue }
+        let latest: String?
+        if let list = resolveMessageList(in: window, title: title) {
+            latest = latestMessageText(in: list)
+        } else if allowDynamicScan() {
+            var texts: [String] = []
+            collectStaticTexts(from: window, depth: 6, results: &texts)
+            latest = texts.last
+        } else {
+            latest = nil
+        }
+        guard let latest else { continue }
         let key = "\(latest):\(title)"
         if state.lastMessageKeys[title] == key { continue }
         state.lastMessageKeys[title] = key
@@ -308,8 +483,13 @@ private func writeInput(chatId: String, text: String, restoreClipboard: Bool) {
     }
     app.activate(options: [.activateAllWindows])
 
-    if let window = frontmostWeChatWindow(), let input = findInputElement(in: window, depth: 6) {
-        AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    if let window = frontmostWeChatWindow() {
+        let title = windowTitle(window).trimmingCharacters(in: .whitespacesAndNewlines)
+        let input = resolveInputElement(in: window, title: title)
+            ?? (allowDynamicScan() ? findInputElement(in: window, depth: 6) : nil)
+        if let input {
+            AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
     }
 
     let pasteboard = NSPasteboard.general
@@ -371,6 +551,9 @@ private func handleCommand(_ message: [String: Any]) {
             let normalized = normalizeListenTargets(targetsRaw)
             state.listenTargets = normalized
             state.lastMessageKeys = state.lastMessageKeys.filter { normalized.keys.contains($0.key) }
+            state.cachedMessageLists.removeAll()
+            state.cachedSessionLists.removeAll()
+            state.cachedInputs.removeAll()
         }
         state.listening = true
         emitStatus("listening")
@@ -379,11 +562,17 @@ private func handleCommand(_ message: [String: Any]) {
         emitStatus("paused")
     case "listen.stop":
         state.listening = false
+        state.cachedMessageLists.removeAll()
+        state.cachedSessionLists.removeAll()
+        state.cachedInputs.removeAll()
         emitStatus("idle")
     case "listen.targets":
         let normalized = normalizeListenTargets(payload["targets"])
         state.listenTargets = normalized
         state.lastMessageKeys = state.lastMessageKeys.filter { normalized.keys.contains($0.key) }
+        state.cachedMessageLists.removeAll()
+        state.cachedSessionLists.removeAll()
+        state.cachedInputs.removeAll()
     case "input.write":
         let chatId = (payload["chat_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let text = (payload["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

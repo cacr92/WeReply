@@ -1,7 +1,9 @@
 pub mod ax;
+pub mod ax_path;
 pub mod message_watch;
 pub mod input_box;
 pub mod session_list;
+pub mod static_ui_paths;
 
 
 #[cfg(target_os = "macos")]

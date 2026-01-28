@@ -33,6 +33,7 @@ impl MockAxWatcher {
 #[cfg(target_os = "macos")]
 pub mod ax {
     use crate::ui_automation::macos::ax::{self, AxElement};
+    use crate::ui_automation::macos::static_ui_paths;
     use anyhow::{anyhow, Result};
     use super::{pick_row_text, score_message_list};
     #[cfg(test)]
@@ -75,11 +76,18 @@ pub mod ax {
     }
 
     fn find_message_list(window: &AxElement) -> Result<AxElement> {
-        let candidates = ax::find_lists_with_titles(window, 8);
-        if let Some(best) = select_message_list(window, candidates) {
-            return Ok(best.0);
+        if let Some(list) = ax::resolve_any_path(window, static_ui_paths::MESSAGE_LIST_PATHS) {
+            return Ok(list);
         }
-        Err(anyhow!("Message list not found"))
+        if static_ui_paths::allow_dynamic_scan() {
+            let candidates = ax::find_lists_with_titles(window, 8);
+            if let Some(best) = select_message_list(window, candidates) {
+                return Ok(best.0);
+            }
+        }
+        Err(anyhow!(
+            "Message list not found (static UI path)."
+        ))
     }
 
     fn select_message_list(

@@ -41,6 +41,7 @@ impl MockAxInputWriter {
 #[cfg(target_os = "macos")]
 pub mod ax {
     use crate::ui_automation::macos::ax::{self, AxElement};
+    use crate::ui_automation::macos::static_ui_paths;
     use anyhow::{anyhow, Result};
 
     pub struct AxInputWriter {
@@ -55,8 +56,15 @@ pub mod ax {
         }
 
         pub fn write(&self, text: &str) -> Result<()> {
-            let input = ax::find_input_element(&self.window, 8)
-                .ok_or_else(|| anyhow!("Input box not found"))?;
+            let input = ax::resolve_any_path(&self.window, static_ui_paths::INPUT_PATHS)
+                .or_else(|| {
+                    if static_ui_paths::allow_dynamic_scan() {
+                        ax::find_input_element(&self.window, 8)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| anyhow!("Input box not found (static UI path)"))?;
             if ax::set_input_value(&input, text).is_ok() {
                 return Ok(());
             }

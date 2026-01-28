@@ -58,6 +58,7 @@ pub fn find_wechat_app(provider: &dyn AxProvider) -> Option<String> {
 #[allow(unexpected_cfgs)]
 mod native {
     use super::*;
+    use crate::ui_automation::macos::ax_path::{resolve_path, AxNodeInfo, AxPathStep};
     use core_foundation::array::{CFArray, CFArrayRef};
     use core_foundation::base::{CFRelease, CFRetain, CFTypeRef, TCFType};
     use core_foundation::dictionary::CFDictionary;
@@ -286,6 +287,27 @@ mod native {
         copy_attribute_array(element, &cfstr("AXChildren")).unwrap_or_default()
     }
 
+    pub fn resolve_ax_path(element: &AxElement, steps: &[AxPathStep]) -> Option<AxElement> {
+        resolve_path(
+            element.clone(),
+            steps,
+            |item| AxNodeInfo {
+                role: role(item),
+                title: title(item),
+            },
+            children,
+        )
+    }
+
+    pub fn resolve_any_path(element: &AxElement, paths: &[&[AxPathStep]]) -> Option<AxElement> {
+        for path in paths {
+            if let Some(found) = resolve_ax_path(element, path) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     pub fn role(element: &AxElement) -> Option<String> {
         copy_attribute_string(element, &cfstr("AXRole"))
     }
@@ -475,27 +497,6 @@ mod native {
             && bytes[8..10].iter().all(|b| b.is_ascii_digit())
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::pick_session_title;
-
-        #[test]
-        fn picks_non_time_text() {
-            let texts = vec![
-                "09:11".to_string(),
-                "Alice".to_string(),
-                "See you tonight?".to_string(),
-            ];
-            assert_eq!(pick_session_title(&texts), Some("Alice".to_string()));
-        }
-
-        #[test]
-        fn falls_back_to_first_text() {
-            let texts = vec!["09:11".to_string()];
-            assert_eq!(pick_session_title(&texts), Some("09:11".to_string()));
-        }
-    }
-
     fn walk(element: &AxElement, depth: usize, visit: &mut impl FnMut(&AxElement)) {
         if depth == 0 {
             return;
@@ -519,6 +520,27 @@ mod native {
             let app: *mut Object = msg_send![apps, objectAtIndex: 0usize];
             let pid: i32 = msg_send![app, processIdentifier];
             Some(pid)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::pick_session_title;
+
+        #[test]
+        fn picks_non_time_text() {
+            let texts = vec![
+                "09:11".to_string(),
+                "Alice".to_string(),
+                "See you tonight?".to_string(),
+            ];
+            assert_eq!(pick_session_title(&texts), Some("Alice".to_string()));
+        }
+
+        #[test]
+        fn falls_back_to_first_text() {
+            let texts = vec!["09:11".to_string()];
+            assert_eq!(pick_session_title(&texts), Some("09:11".to_string()));
         }
     }
 

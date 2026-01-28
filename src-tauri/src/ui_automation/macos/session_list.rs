@@ -101,6 +101,7 @@ pub fn collect_recent_chats(provider: &mut dyn AxSessionListProvider) -> Result<
 pub mod ax {
     use super::AxSessionListProvider;
     use crate::ui_automation::macos::ax::{self, AxElement};
+    use crate::ui_automation::macos::static_ui_paths;
     use anyhow::{anyhow, Result};
 
     pub struct AxSessionList {
@@ -125,11 +126,18 @@ pub mod ax {
     }
 
     fn find_session_list(window: &AxElement) -> Result<AxElement> {
-        let candidates = ax::find_lists_with_titles(window, 8);
-        if let Some(best) = select_session_list(window, candidates) {
-            return Ok(best.0);
+        if let Some(list) = ax::resolve_any_path(window, static_ui_paths::SESSION_LIST_PATHS) {
+            return Ok(list);
         }
-        Err(anyhow!("Session list not found"))
+        if static_ui_paths::allow_dynamic_scan() {
+            let candidates = ax::find_lists_with_titles(window, 8);
+            if let Some(best) = select_session_list(window, candidates) {
+                return Ok(best.0);
+            }
+        }
+        Err(anyhow!(
+            "Session list not found (static UI path)."
+        ))
     }
 
     fn select_session_list(
