@@ -456,6 +456,15 @@ async fn get_api_key_status() -> Result<ApiResponse<bool>, String> {
 
 #[tauri::command]
 #[specta::specta]
+async fn get_api_key() -> Result<ApiResponse<String>, String> {
+    Ok(match ApiKeyManager::get_deepseek_api_key() {
+        Ok(key) => api_ok(key),
+        Err(err) => api_err(err.to_string()),
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
 async fn delete_api_key() -> Result<ApiResponse<()>, String> {
     info!("删除 API 密钥");
     Ok(match ApiKeyManager::delete_deepseek_api_key() {
@@ -706,6 +715,7 @@ pub fn run() {
             get_status,
             save_api_key,
             get_api_key_status,
+            get_api_key,
             delete_api_key,
             diagnose_deepseek,
             list_models,

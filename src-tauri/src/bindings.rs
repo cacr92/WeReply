@@ -90,6 +90,7 @@ pub fn export_typescript_bindings(path: &Path) -> Result<()> {
     output.push_str(
         "  getApiKeyStatus: (): Promise<ApiResponse<boolean>> => invoke(\"get_api_key_status\"),\n",
     );
+    output.push_str("  getApiKey: (): Promise<ApiResponse<string>> => invoke(\"get_api_key\"),\n");
     output.push_str("  deleteApiKey: (): Promise<ApiResponse<null>> => invoke(\"delete_api_key\"),\n");
     output.push_str(
         "  diagnoseDeepseek: (apiKey?: string): Promise<ApiResponse<DeepseekDiagnostics>> =>\n",

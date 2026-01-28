@@ -96,6 +96,12 @@ function App() {
       if (keyRes.success && typeof keyRes.data === "boolean") {
         setApiKeySet(keyRes.data);
         setApiKeyStatus(keyRes.data ? "connected" : "idle");
+        if (keyRes.data) {
+          const keyValueRes = await commands.getApiKey();
+          if (keyValueRes.success && typeof keyValueRes.data === "string") {
+            setApiKeyInput(keyValueRes.data);
+          }
+        }
       }
       if (configRes.success && configRes.data?.deepseek_model) {
         setSelectedModel(configRes.data.deepseek_model);
@@ -365,6 +371,7 @@ function App() {
       notify.success("API 密钥已删除");
       setApiKeySet(false);
       setApiKeyStatus("idle");
+      setApiKeyInput("");
       setDiagnostics(null);
       setApiKeyError(null);
     } else {

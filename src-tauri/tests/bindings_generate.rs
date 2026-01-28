@@ -28,4 +28,8 @@ fn generated_bindings_include_api_key_args() {
         contents.contains("diagnoseDeepseek") && contents.contains("apiKey"),
         "bindings should include apiKey parameter for diagnoseDeepseek"
     );
+    assert!(
+        contents.contains("getApiKey") && contents.contains("get_api_key"),
+        "bindings should include getApiKey command"
+    );
 }
