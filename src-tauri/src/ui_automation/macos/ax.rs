@@ -259,7 +259,8 @@ mod native {
     pub fn collect_session_titles(list: &AxElement) -> Vec<String> {
         let mut titles = Vec::new();
         for row in children(list) {
-            if let Some(title) = first_static_text(&row, 4) {
+            let texts = collect_static_texts(&row, 6);
+            if let Some(title) = pick_session_title(&texts) {
                 titles.push(title);
             }
         }
@@ -297,6 +298,7 @@ mod native {
         copy_attribute_string(element, &cfstr("AXValue"))
     }
 
+    #[allow(dead_code)]
     pub fn first_static_text(element: &AxElement, depth: usize) -> Option<String> {
         if depth == 0 {
             return None;
@@ -416,6 +418,81 @@ mod native {
         }
         for child in children(element) {
             collect_static_texts_inner(&child, depth - 1, results);
+        }
+    }
+
+    fn pick_session_title(texts: &[String]) -> Option<String> {
+        let mut fallback = None;
+        for item in texts {
+            let trimmed = item.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if fallback.is_none() {
+                fallback = Some(trimmed);
+            }
+            if looks_like_time(trimmed) {
+                continue;
+            }
+            return Some(trimmed.to_string());
+        }
+        fallback.map(|item| item.to_string())
+    }
+
+    fn looks_like_time(text: &str) -> bool {
+        let trimmed = text.trim();
+        if is_clock_time(trimmed) {
+            return true;
+        }
+        if is_date(trimmed) {
+            return true;
+        }
+        let upper = trimmed.to_ascii_uppercase();
+        upper.ends_with(" AM") || upper.ends_with(" PM") || upper == "AM" || upper == "PM"
+    }
+
+    fn is_clock_time(text: &str) -> bool {
+        if text.len() != 5 {
+            return false;
+        }
+        let bytes = text.as_bytes();
+        bytes[2] == b':'
+            && bytes[0].is_ascii_digit()
+            && bytes[1].is_ascii_digit()
+            && bytes[3].is_ascii_digit()
+            && bytes[4].is_ascii_digit()
+    }
+
+    fn is_date(text: &str) -> bool {
+        if text.len() != 10 {
+            return false;
+        }
+        let bytes = text.as_bytes();
+        bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes[..4].iter().all(|b| b.is_ascii_digit())
+            && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+            && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::pick_session_title;
+
+        #[test]
+        fn picks_non_time_text() {
+            let texts = vec![
+                "09:11".to_string(),
+                "Alice".to_string(),
+                "See you tonight?".to_string(),
+            ];
+            assert_eq!(pick_session_title(&texts), Some("Alice".to_string()));
+        }
+
+        #[test]
+        fn falls_back_to_first_text() {
+            let texts = vec!["09:11".to_string()];
+            assert_eq!(pick_session_title(&texts), Some("09:11".to_string()));
         }
     }
 
