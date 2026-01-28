@@ -25,6 +25,7 @@ mod automation {
     use anyhow::{anyhow, Result};
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tracing::{info, warn};
 
     pub struct MacosAutomation {
         client: Option<AxClient>,
@@ -70,18 +71,30 @@ mod automation {
         }
 
         fn start_listening(&self, _targets: Vec<ListenTarget>) -> Result<()> {
-            if let Some(client) = self.client.as_ref() {
-                if let Some(window) = client.front_window() {
-                    let watcher = AxMessageWatcher::new(&window)?;
-                    let mut guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
-                    *guard = Some(watcher);
-                    return Ok(());
-                }
-            }
-            Err(anyhow!("WeChat window not found"))
+            info!("macOS 自动化开始监听");
+            let client = self
+                .client
+                .as_ref()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
+            let window = client
+                .front_window()
+                .ok_or_else(|| anyhow!("WeChat window not found"))?;
+            info!("WeChat 窗口已找到，初始化消息监听器");
+            let watcher = AxMessageWatcher::new(&window).map_err(|err| {
+                warn!("创建消息监听器失败: {}", err);
+                err
+            })?;
+            let mut guard = self
+                .watcher
+                .lock()
+                .map_err(|_| anyhow!("Watcher lock poisoned"))?;
+            *guard = Some(watcher);
+            info!("macOS 消息监听器已就绪");
+            Ok(())
         }
 
         fn stop_listening(&self) -> Result<()> {
+            info!("macOS 自动化停止监听");
             let mut guard = self.watcher.lock().map_err(|_| anyhow!("Watcher lock poisoned"))?;
             *guard = None;
             Ok(())

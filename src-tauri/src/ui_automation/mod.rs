@@ -5,7 +5,9 @@ pub mod macos;
 use crate::types::{api_err, api_ok, ApiResponse};
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::spawn_blocking;
+use tracing::{info, warn};
 pub use types::{ChatSummary, IncomingMessage, ListenTarget, Platform};
 
 pub trait WeChatAutomation {
@@ -67,11 +69,30 @@ impl AutomationManager {
         let Some(automation) = self.inner.as_ref() else {
             return api_err("Automation not ready");
         };
+        let timeout = start_listening_timeout();
+        info!(
+            "开始启动本地自动化监听: targets={}, timeout_ms={}",
+            targets.len(),
+            timeout.as_millis()
+        );
         let automation = Arc::clone(automation);
-        match spawn_blocking(move || automation.start_listening(targets)).await {
-            Ok(Ok(())) => api_ok(()),
-            Ok(Err(err)) => api_err(err.to_string()),
-            Err(err) => api_err(format!("Automation task failed: {}", err)),
+        match tokio::time::timeout(timeout, spawn_blocking(move || automation.start_listening(targets))).await {
+            Ok(Ok(Ok(()))) => {
+                info!("本地自动化监听启动成功");
+                api_ok(())
+            }
+            Ok(Ok(Err(err))) => {
+                warn!("本地自动化监听启动失败: {}", err);
+                api_err(err.to_string())
+            }
+            Ok(Err(err)) => {
+                warn!("本地自动化监听任务失败: {}", err);
+                api_err(format!("Automation task failed: {}", err))
+            }
+            Err(_) => {
+                warn!("本地自动化监听启动超时");
+                api_err("启动监听超时，请确认微信窗口已打开")
+            }
         }
     }
 
@@ -114,3 +135,13 @@ impl AutomationManager {
 
 #[cfg(test)]
 mod tests;
+
+fn start_listening_timeout() -> Duration {
+    const DEFAULT_TIMEOUT_MS: u64 = 5_000;
+    let timeout = std::env::var("WEREPLY_AUTOMATION_START_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_TIMEOUT_MS);
+    Duration::from_millis(timeout)
+}

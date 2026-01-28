@@ -99,18 +99,27 @@ async fn start_listening(
         (guard.automation.clone(), guard.listen_targets.clone())
     };
     if automation.is_ready() {
+        info!(
+            "使用本地自动化路径启动监听: targets={}",
+            targets.len()
+        );
         let res = automation.start_listening(targets).await;
         if res.success {
             start_automation_polling(app.clone(), state.inner().clone()).await;
             set_runtime_state(&app, state.inner().clone(), RuntimeState::Listening, "").await;
+            info!("本地自动化监听已启动");
+        } else {
+            warn!("本地自动化监听启动失败: {}", res.message);
         }
         return Ok(res);
     }
 
+    info!("使用 Agent 路径启动监听");
     if let Err(err) = ensure_agent_running(app.clone(), state.inner().clone()).await {
         warn!("启动 Agent 失败: {}", err);
         return Ok(api_err(err.to_string()));
     }
+    info!("Agent 已连接，发送监听指令");
     if let Err(err) =
         send_listen_control(state.inner().clone(), "listen.start", true, true).await
     {
@@ -536,6 +545,14 @@ async fn send_listen_control(
             },
         )
     };
+    info!(
+        "发送监听控制指令: type={}, poll_interval_ms={}, targets={}",
+        message_type,
+        poll_interval_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        targets.as_ref().map(|items| items.len()).unwrap_or(0)
+    );
     let payload = ListenControlPayload {
         poll_interval_ms,
         targets,
