@@ -23,6 +23,10 @@ export type Config = { deepseek_model: string; suggestion_count: number; context
 
 export type UiTreeExport = { json: string; saved_to: string | null }
 
+export type UiPathStep = { roles: string[]; index: number; title_contains: string | null }
+
+export type UiTreeLearnResult = { json: string; session_list_path: { roles: string[]; index: number; title_contains: string | null }[]; message_list_path: { roles: string[]; index: number; title_contains: string | null }[]; input_path: { roles: string[]; index: number; title_contains: string | null }[]; written_files: string[] }
+
 export type SuggestionsUpdated = { chat_id: string; suggestions: { id: string; style: SuggestionStyle; text: string }[] }
 
 export type ErrorPayload = { code: string; message: string; recoverable: boolean }
@@ -56,6 +60,8 @@ export const commands = {
   listRecentChats: (): Promise<ApiResponse<ChatSummary[]>> => invoke("list_recent_chats"),
   exportWeChatUiTree: (maxDepth?: number, outputPath?: string): Promise<ApiResponse<UiTreeExport>> =>
     invoke("export_wechat_ui_tree", { maxDepth, outputPath }),
+  learnWeChatUiPaths: (maxDepth?: number, outputPath?: string): Promise<ApiResponse<UiTreeLearnResult>> =>
+    invoke("learn_wechat_ui_paths", { maxDepth, outputPath }),
   setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>
     invoke("set_deepseek_model", { model }),
 };

@@ -6,7 +6,7 @@ use specta::ts::{export, BigIntExportBehavior, ExportConfiguration};
 use crate::types::{
     ApiResponse, ChatKind, ChatSummary, Config, DeepseekDiagnostics, DeepseekEndpointStatus,
     ErrorPayload, ListenTarget, Platform, RuntimeState, Status, Suggestion, SuggestionStyle,
-    SuggestionsUpdated, UiTreeExport,
+    SuggestionsUpdated, UiPathStep, UiTreeExport, UiTreeLearnResult,
 };
 
 fn export_types() -> Result<String> {
@@ -32,6 +32,10 @@ fn export_types() -> Result<String> {
     output.push_str(&export::<Config>(&config)?);
     output.push_str("\n\n");
     output.push_str(&export::<UiTreeExport>(&config)?);
+    output.push_str("\n\n");
+    output.push_str(&export::<UiPathStep>(&config)?);
+    output.push_str("\n\n");
+    output.push_str(&export::<UiTreeLearnResult>(&config)?);
     output.push_str("\n\n");
     output.push_str(&export::<SuggestionsUpdated>(&config)?);
     output.push_str("\n\n");
@@ -111,6 +115,12 @@ pub fn export_typescript_bindings(path: &Path) -> Result<()> {
     );
     output.push_str(
         "    invoke(\"export_wechat_ui_tree\", { maxDepth, outputPath }),\n",
+    );
+    output.push_str(
+        "  learnWeChatUiPaths: (maxDepth?: number, outputPath?: string): Promise<ApiResponse<UiTreeLearnResult>> =>\n",
+    );
+    output.push_str(
+        "    invoke(\"learn_wechat_ui_paths\", { maxDepth, outputPath }),\n",
     );
     output.push_str(
         "  setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>\n",

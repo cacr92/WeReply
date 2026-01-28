@@ -23,7 +23,7 @@ use crate::ipc::{
 use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{
     api_err, api_ok, ApiResponse, ChatSummary, Config, DeepseekDiagnostics, ListenTarget, Platform,
-    RuntimeState, Status, UiTreeExport,
+    RuntimeState, Status, UiPathStep, UiTreeExport, UiTreeLearnResult,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, State};
@@ -321,6 +321,99 @@ async fn export_wechat_ui_tree(
             Ok(UiTreeExport {
                 json,
                 saved_to: output_path,
+            })
+        })
+        .await;
+
+        match result {
+            Ok(Ok(payload)) => Ok(api_ok(payload)),
+            Ok(Err(err)) => Ok(api_err(err.to_string())),
+            Err(err) => Ok(api_err(format!("Automation task failed: {}", err))),
+        }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn learn_wechat_ui_paths(
+    _state: State<'_, SharedState>,
+    max_depth: Option<u32>,
+    output_path: Option<String>,
+) -> Result<ApiResponse<UiTreeLearnResult>, String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Ok(api_err("仅支持 macOS"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let depth = max_depth.unwrap_or(10).min(32) as usize;
+        let output_path = output_path
+            .map(|path| path.trim().to_string())
+            .filter(|path| !path.is_empty());
+        let result = tokio::task::spawn_blocking(move || -> anyhow::Result<UiTreeLearnResult> {
+            if !crate::ui_automation::macos::ax::check_accessibility() {
+                anyhow::bail!("缺少辅助功能权限");
+            }
+            let client = crate::ui_automation::macos::AxClient::new()?;
+            let window = client
+                .front_window()
+                .ok_or_else(|| anyhow::anyhow!("WeChat window not found"))?;
+            let tree = crate::ui_automation::macos::ax::snapshot_tree(&window, depth);
+            let json = serde_json::to_string_pretty(&tree)?;
+            let root = crate::ui_automation::macos::ax_learn::parse_snapshot(&tree)
+                .ok_or_else(|| anyhow::anyhow!("解析 UI 树失败"))?;
+            let learned = crate::ui_automation::macos::ax_learn::learn_paths(&root)
+                .map_err(|err| anyhow::anyhow!(err))?;
+            let repo_root = crate::ui_automation::macos::ax_learn::find_repo_root()
+                .map_err(|err| anyhow::anyhow!(err))?;
+            let rust_path =
+                crate::ui_automation::macos::ax_learn::write_static_paths_rs(&repo_root, &learned)
+                    .map_err(|err| anyhow::anyhow!(err))?;
+            let swift_path =
+                crate::ui_automation::macos::ax_learn::update_swift_paths(&repo_root, &learned)
+                    .map_err(|err| anyhow::anyhow!(err))?;
+            let mut written_files = vec![
+                rust_path.to_string_lossy().to_string(),
+                swift_path.to_string_lossy().to_string(),
+            ];
+            if let Some(path) = output_path.as_ref() {
+                std::fs::write(path, &json)?;
+                written_files.push(path.clone());
+            }
+            let session_list_path = learned
+                .session_list
+                .into_iter()
+                .map(|step| UiPathStep {
+                    roles: step.roles,
+                    index: step.index as u32,
+                    title_contains: step.title_contains,
+                })
+                .collect();
+            let message_list_path = learned
+                .message_list
+                .into_iter()
+                .map(|step| UiPathStep {
+                    roles: step.roles,
+                    index: step.index as u32,
+                    title_contains: step.title_contains,
+                })
+                .collect();
+            let input_path = learned
+                .input
+                .into_iter()
+                .map(|step| UiPathStep {
+                    roles: step.roles,
+                    index: step.index as u32,
+                    title_contains: step.title_contains,
+                })
+                .collect();
+            Ok(UiTreeLearnResult {
+                json,
+                session_list_path,
+                message_list_path,
+                input_path,
+                written_files,
             })
         })
         .await;
@@ -783,6 +876,7 @@ pub fn run() {
             delete_api_key,
             diagnose_deepseek,
             list_models,
+            learn_wechat_ui_paths,
             set_deepseek_model
         ])
         .run(tauri::generate_context!())

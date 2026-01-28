@@ -33,6 +33,7 @@ private struct AxPathStep {
     let titleContains: String?
 }
 
+// AUTO-GENERATED UI PATHS START
 private let sessionListPaths: [[AxPathStep]] = [
     [
         AxPathStep(roles: ["AXSplitGroup"], index: 0, titleContains: nil),
@@ -74,6 +75,7 @@ private let inputPaths: [[AxPathStep]] = [
         AxPathStep(roles: ["AXTextArea", "AXTextField"], index: 0, titleContains: nil),
     ],
 ]
+// AUTO-GENERATED UI PATHS END
 
 private func jsonString(_ object: Any) -> String? {
     guard JSONSerialization.isValidJSONObject(object) else { return nil }

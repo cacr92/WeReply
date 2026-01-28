@@ -94,6 +94,24 @@ pub struct UiTreeExport {
 
 #[derive(Debug, Serialize, Deserialize, Type, Clone)]
 #[specta(inline)]
+pub struct UiPathStep {
+    pub roles: Vec<String>,
+    pub index: u32,
+    pub title_contains: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
+pub struct UiTreeLearnResult {
+    pub json: String,
+    pub session_list_path: Vec<UiPathStep>,
+    pub message_list_path: Vec<UiPathStep>,
+    pub input_path: Vec<UiPathStep>,
+    pub written_files: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
 pub struct SuggestionsUpdated {
     pub chat_id: String,
     pub suggestions: Vec<Suggestion>,
