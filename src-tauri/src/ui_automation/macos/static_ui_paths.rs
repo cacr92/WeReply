@@ -47,5 +47,48 @@ pub fn allow_dynamic_scan() -> bool {
     std::env::var("WEREPLY_ALLOW_DYNAMIC_AX_SCAN")
         .ok()
         .as_deref()
-        == Some("1")
+        .map(|value| value != "0")
+        .unwrap_or(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allow_dynamic_scan;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn with_env<F: FnOnce() -> T, T>(value: Option<&str>, f: F) -> T {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let key = "WEREPLY_ALLOW_DYNAMIC_AX_SCAN";
+        let old = std::env::var(key).ok();
+        match value {
+            Some(val) => std::env::set_var(key, val),
+            None => std::env::remove_var(key),
+        }
+        let result = f();
+        match old {
+            Some(val) => std::env::set_var(key, val),
+            None => std::env::remove_var(key),
+        }
+        result
+    }
+
+    #[test]
+    fn dynamic_scan_enabled_by_default() {
+        let enabled = with_env(None, allow_dynamic_scan);
+        assert!(enabled);
+    }
+
+    #[test]
+    fn dynamic_scan_respects_allow_flag() {
+        let enabled = with_env(Some("1"), allow_dynamic_scan);
+        assert!(enabled);
+    }
+
+    #[test]
+    fn dynamic_scan_can_be_disabled() {
+        let enabled = with_env(Some("0"), allow_dynamic_scan);
+        assert!(!enabled);
+    }
 }
