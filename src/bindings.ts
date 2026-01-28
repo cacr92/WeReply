@@ -46,6 +46,7 @@ export const commands = {
     invoke("write_suggestion", { chat_id: chatId, text }),
   saveApiKey: (apiKey: string): Promise<ApiResponse<null>> => invoke("save_api_key", { apiKey }),
   getApiKeyStatus: (): Promise<ApiResponse<boolean>> => invoke("get_api_key_status"),
+  getApiKey: (): Promise<ApiResponse<string>> => invoke("get_api_key"),
   deleteApiKey: (): Promise<ApiResponse<null>> => invoke("delete_api_key"),
   diagnoseDeepseek: (apiKey?: string): Promise<ApiResponse<DeepseekDiagnostics>> =>
     invoke("diagnose_deepseek", apiKey ? { apiKey } : {}),

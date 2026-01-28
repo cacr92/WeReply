@@ -30,4 +30,10 @@ describe("tauri command bindings", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("diagnose_deepseek", {});
   });
+
+  it("calls get_api_key when fetching saved key", async () => {
+    await commands.getApiKey();
+
+    expect(invokeMock).toHaveBeenCalledWith("get_api_key");
+  });
 });
