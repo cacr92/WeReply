@@ -490,7 +490,7 @@ function App() {
         open={settingsOpen}
         onCancel={() => setSettingsOpen(false)}
         footer={null}
-        width={720}
+        width={640}
         style={{ top: 24 }}
         styles={{
           body: {
@@ -577,7 +577,7 @@ function App() {
         open={listenModalOpen}
         onCancel={() => setListenModalOpen(false)}
         footer={null}
-        width={760}
+        width={680}
         style={{ top: 24 }}
         styles={{
           body: {
