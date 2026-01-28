@@ -125,10 +125,71 @@ pub mod ax {
     }
 
     fn find_session_list(window: &AxElement) -> Result<AxElement> {
-        let candidates = ax::find_lists_with_titles(window, 6);
-        if let Some(best) = candidates.into_iter().max_by_key(|item| item.1.len()) {
+        let candidates = ax::find_lists_with_titles(window, 8);
+        if let Some(best) = select_session_list(window, candidates) {
             return Ok(best.0);
         }
         Err(anyhow!("Session list not found"))
+    }
+
+    fn select_session_list(
+        window: &AxElement,
+        candidates: Vec<(AxElement, Vec<String>)>,
+    ) -> Option<(AxElement, Vec<String>)> {
+        let window_frame = ax::frame(window);
+        let mut scored = candidates
+            .into_iter()
+            .map(|(list, titles)| {
+                let frame = ax::frame(&list);
+                let score = if let (Some(window_frame), Some(frame)) = (window_frame, frame) {
+                    score_session_list(window_frame, frame.center_x(), frame.width, titles.len())
+                } else {
+                    titles.len() as i64
+                };
+                (score, list, titles)
+            })
+            .collect::<Vec<_>>();
+        scored.sort_by_key(|(score, _, _)| *score);
+        scored.pop().map(|(_, list, titles)| (list, titles))
+    }
+
+    pub(super) fn score_session_list(
+        window: crate::ui_automation::macos::ax::AxRect,
+        center_x: f64,
+        width: f64,
+        title_count: usize,
+    ) -> i64 {
+        let mut score = title_count as i64;
+        if center_x < window.center_x() {
+            score += 10_000;
+        } else {
+            score -= 10_000;
+        }
+        if width <= window.width * 0.45 {
+            score += 500;
+        }
+        if width <= window.width * 0.35 {
+            score += 200;
+        }
+        score
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::ax::score_session_list;
+    use crate::ui_automation::macos::ax::AxRect;
+
+    #[test]
+    fn session_list_prefers_left_side() {
+        let window = AxRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1000.0,
+            height: 800.0,
+        };
+        let left_score = score_session_list(window, 200.0, 300.0, 6);
+        let right_score = score_session_list(window, 720.0, 500.0, 12);
+        assert!(left_score > right_score);
     }
 }
