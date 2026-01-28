@@ -21,6 +21,8 @@ export type Status = { state: RuntimeState; platform: Platform; agent_connected:
 
 export type Config = { deepseek_model: string; suggestion_count: number; context_max_messages: number; context_max_chars: number; poll_interval_ms: number; listen_targets: { name: string; kind: ChatKind }[]; temperature: number; top_p: number; base_url: string; timeout_ms: number; max_retries: number; log_level: string; log_to_file: boolean }
 
+export type UiTreeExport = { json: string; saved_to: string | null }
+
 export type SuggestionsUpdated = { chat_id: string; suggestions: { id: string; style: SuggestionStyle; text: string }[] }
 
 export type ErrorPayload = { code: string; message: string; recoverable: boolean }
@@ -52,6 +54,8 @@ export const commands = {
     invoke("diagnose_deepseek", apiKey ? { apiKey } : {}),
   listModels: (): Promise<ApiResponse<string[]>> => invoke("list_models"),
   listRecentChats: (): Promise<ApiResponse<ChatSummary[]>> => invoke("list_recent_chats"),
+  exportWeChatUiTree: (maxDepth?: number, outputPath?: string): Promise<ApiResponse<UiTreeExport>> =>
+    invoke("export_wechat_ui_tree", { maxDepth, outputPath }),
   setDeepseekModel: (model: string): Promise<ApiResponse<null>> =>
     invoke("set_deepseek_model", { model }),
 };

@@ -1,5 +1,6 @@
 pub mod ax;
 pub mod ax_path;
+pub mod ax_snapshot;
 pub mod message_watch;
 pub mod input_box;
 pub mod session_list;

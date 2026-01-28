@@ -87,6 +87,13 @@ pub struct Config {
 
 #[derive(Debug, Serialize, Deserialize, Type, Clone)]
 #[specta(inline)]
+pub struct UiTreeExport {
+    pub json: String,
+    pub saved_to: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
 pub struct SuggestionsUpdated {
     pub chat_id: String,
     pub suggestions: Vec<Suggestion>,

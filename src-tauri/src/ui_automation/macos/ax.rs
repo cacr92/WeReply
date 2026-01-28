@@ -59,8 +59,10 @@ pub fn find_wechat_app(provider: &dyn AxProvider) -> Option<String> {
 mod native {
     use super::*;
     use crate::ui_automation::macos::ax_path::{resolve_path, AxNodeInfo, AxPathStep};
+    use crate::ui_automation::macos::ax_snapshot::{self, AxSnapshotInfo, AxSnapshotRect};
     use core_foundation::array::{CFArray, CFArrayRef};
     use core_foundation::base::{CFRelease, CFRetain, CFTypeRef, TCFType};
+    use core_foundation::boolean::CFBoolean;
     use core_foundation::dictionary::CFDictionary;
     use core_foundation::number::CFNumber;
     use core_foundation::string::{CFString, CFStringRef};
@@ -320,6 +322,14 @@ mod native {
         copy_attribute_string(element, &cfstr("AXValue"))
     }
 
+    pub fn enabled(element: &AxElement) -> Option<bool> {
+        copy_attribute_bool(element, &cfstr("AXEnabled"))
+    }
+
+    pub fn focused(element: &AxElement) -> Option<bool> {
+        copy_attribute_bool(element, &cfstr("AXFocused"))
+    }
+
     #[allow(dead_code)]
     pub fn first_static_text(element: &AxElement, depth: usize) -> Option<String> {
         if depth == 0 {
@@ -390,6 +400,27 @@ mod native {
         })
     }
 
+    pub fn snapshot_tree(element: &AxElement, depth: usize) -> serde_json::Value {
+        ax_snapshot::snapshot_tree(
+            element.clone(),
+            depth,
+            &|item| AxSnapshotInfo {
+                role: role(item),
+                title: title(item),
+                value: value(item),
+                frame: frame(item).map(|frame| AxSnapshotRect {
+                    x: frame.x,
+                    y: frame.y,
+                    width: frame.width,
+                    height: frame.height,
+                }),
+                enabled: enabled(item),
+                focused: focused(item),
+            },
+            &children,
+        )
+    }
+
     pub fn set_input_value(element: &AxElement, text: &str) -> Result<()> {
         let value = CFString::new(text);
         set_attribute_value(element, &cfstr("AXValue"), value.as_concrete_TypeRef() as _)
@@ -420,6 +451,12 @@ mod native {
         } else {
             None
         }
+    }
+
+    fn copy_attribute_bool(element: &AxElement, attr: &CFString) -> Option<bool> {
+        let value = copy_attribute_value(element, attr)?;
+        let boolean = unsafe { CFBoolean::wrap_under_get_rule(value as _) };
+        Some(bool::from(boolean))
     }
 
     fn cfstr(value: &str) -> CFString {
