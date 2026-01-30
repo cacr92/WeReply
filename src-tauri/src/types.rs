@@ -112,6 +112,16 @@ pub struct UiTreeLearnResult {
 
 #[derive(Debug, Serialize, Deserialize, Type, Clone)]
 #[specta(inline)]
+pub struct UiPathsStatus {
+    pub saved: bool,
+    pub saved_at: Option<u64>,
+    pub version: Option<u32>,
+    pub paths_file: Option<String>,
+    pub tree_file: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
+#[specta(inline)]
 pub struct SuggestionsUpdated {
     pub chat_id: String,
     pub suggestions: Vec<Suggestion>,

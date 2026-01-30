@@ -102,6 +102,7 @@ pub mod ax {
     use super::AxSessionListProvider;
     use crate::ui_automation::macos::ax::{self, AxElement};
     use crate::ui_automation::macos::static_ui_paths;
+    use crate::ui_automation::macos::ui_paths_store;
     use anyhow::{anyhow, Result};
 
     pub struct AxSessionList {
@@ -126,6 +127,11 @@ pub mod ax {
     }
 
     fn find_session_list(window: &AxElement) -> Result<AxElement> {
+        if let Some(paths) = ui_paths_store::get_paths() {
+            if let Some(list) = ax::resolve_owned_path(window, &paths.session_list) {
+                return Ok(list);
+            }
+        }
         if let Some(list) = ax::resolve_any_path(window, static_ui_paths::SESSION_LIST_PATHS) {
             return Ok(list);
         }

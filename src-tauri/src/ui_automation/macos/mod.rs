@@ -6,6 +6,7 @@ pub mod message_watch;
 pub mod input_box;
 pub mod session_list;
 pub mod static_ui_paths;
+pub mod ui_paths_store;
 
 
 #[cfg(target_os = "macos")]

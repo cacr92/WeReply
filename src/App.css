@@ -145,6 +145,13 @@ textarea {
   gap: 12px;
 }
 
+.ui-tree-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
 .control-group {
   display: flex;
   align-items: center;

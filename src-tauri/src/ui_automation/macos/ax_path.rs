@@ -6,6 +6,13 @@ pub struct AxPathStep {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedAxPathStep {
+    pub roles: Vec<String>,
+    pub title_contains: Option<String>,
+    pub index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AxNodeInfo {
     pub role: Option<String>,
     pub title: Option<String>,
@@ -45,6 +52,28 @@ pub fn resolve_path<T: Clone>(
     Some(current)
 }
 
+pub fn resolve_owned_path<T: Clone>(
+    root: T,
+    steps: &[OwnedAxPathStep],
+    info: impl Fn(&T) -> AxNodeInfo,
+    children: impl Fn(&T) -> Vec<T>,
+) -> Option<T> {
+    let mut current = root;
+    for step in steps {
+        let mut matches = Vec::new();
+        for child in children(&current) {
+            if matches_owned_step(&info(&child), step) {
+                matches.push(child);
+            }
+        }
+        if step.index >= matches.len() {
+            return None;
+        }
+        current = matches[step.index].clone();
+    }
+    Some(current)
+}
+
 fn matches_step(info: &AxNodeInfo, step: &AxPathStep) -> bool {
     let Some(role) = info.role.as_deref() else {
         return false;
@@ -61,9 +90,25 @@ fn matches_step(info: &AxNodeInfo, step: &AxPathStep) -> bool {
     true
 }
 
+fn matches_owned_step(info: &AxNodeInfo, step: &OwnedAxPathStep) -> bool {
+    let Some(role) = info.role.as_deref() else {
+        return false;
+    };
+    if !step.roles.iter().any(|candidate| candidate == role) {
+        return false;
+    }
+    if let Some(substr) = step.title_contains.as_deref() {
+        let title = info.title.as_deref().unwrap_or("");
+        if !title.contains(substr) {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{resolve_path, step, AxNodeInfo, AxPathStep};
+    use super::{resolve_owned_path, resolve_path, step, AxNodeInfo, AxPathStep, OwnedAxPathStep};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct TestNode {
@@ -145,5 +190,59 @@ mod tests {
         let steps: &[AxPathStep] = &[step(&["AXGroup"], 2, None)];
         let found = resolve_path(root.clone(), steps, TestNode::info, children);
         assert!(found.is_none());
+    }
+
+    #[test]
+    fn resolves_owned_path_by_role() {
+        let root = TestNode {
+            role: "AXWindow",
+            title: "",
+            children: vec![
+                TestNode {
+                    role: "AXGroup",
+                    title: "left",
+                    children: vec![],
+                },
+                TestNode {
+                    role: "AXGroup",
+                    title: "right",
+                    children: vec![],
+                },
+            ],
+        };
+        let steps = vec![OwnedAxPathStep {
+            roles: vec!["AXGroup".to_string()],
+            index: 1,
+            title_contains: None,
+        }];
+        let found = resolve_owned_path(root.clone(), &steps, TestNode::info, children).unwrap();
+        assert_eq!(found.title, "right");
+    }
+
+    #[test]
+    fn resolves_owned_path_with_title() {
+        let root = TestNode {
+            role: "AXWindow",
+            title: "",
+            children: vec![
+                TestNode {
+                    role: "AXGroup",
+                    title: "ChatList",
+                    children: vec![],
+                },
+                TestNode {
+                    role: "AXGroup",
+                    title: "MessagesPane",
+                    children: vec![],
+                },
+            ],
+        };
+        let steps = vec![OwnedAxPathStep {
+            roles: vec!["AXGroup".to_string()],
+            index: 0,
+            title_contains: Some("Messages".to_string()),
+        }];
+        let found = resolve_owned_path(root.clone(), &steps, TestNode::info, children).unwrap();
+        assert_eq!(found.title, "MessagesPane");
     }
 }

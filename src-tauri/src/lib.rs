@@ -23,7 +23,7 @@ use crate::ipc::{
 use crate::listen_targets::{normalize_listen_targets, MAX_LISTEN_TARGETS};
 use crate::types::{
     api_err, api_ok, ApiResponse, ChatSummary, Config, DeepseekDiagnostics, ListenTarget, Platform,
-    RuntimeState, Status, UiPathStep, UiTreeExport, UiTreeLearnResult,
+    RuntimeState, Status, UiPathStep, UiPathsStatus, UiTreeExport, UiTreeLearnResult,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, State};
@@ -296,6 +296,7 @@ async fn export_wechat_ui_tree(
 ) -> Result<ApiResponse<UiTreeExport>, String> {
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         return Ok(api_err("仅支持 macOS"));
     }
 
@@ -336,6 +337,7 @@ async fn export_wechat_ui_tree(
 #[tauri::command]
 #[specta::specta]
 async fn learn_wechat_ui_paths(
+    app: AppHandle,
     _state: State<'_, SharedState>,
     max_depth: Option<u32>,
     output_path: Option<String>,
@@ -365,18 +367,35 @@ async fn learn_wechat_ui_paths(
                 .ok_or_else(|| anyhow::anyhow!("解析 UI 树失败"))?;
             let learned = crate::ui_automation::macos::ax_learn::learn_paths(&root)
                 .map_err(|err| anyhow::anyhow!(err))?;
-            let repo_root = crate::ui_automation::macos::ax_learn::find_repo_root()
+            let mut written_files = Vec::new();
+            match crate::ui_automation::macos::ax_learn::find_repo_root() {
+                Ok(repo_root) => {
+                    let rust_path = crate::ui_automation::macos::ax_learn::write_static_paths_rs(
+                        &repo_root,
+                        &learned,
+                    )
+                    .map_err(|err| anyhow::anyhow!(err))?;
+                    let swift_path =
+                        crate::ui_automation::macos::ax_learn::update_swift_paths(
+                            &repo_root,
+                            &learned,
+                        )
+                        .map_err(|err| anyhow::anyhow!(err))?;
+                    written_files.push(rust_path.to_string_lossy().to_string());
+                    written_files.push(swift_path.to_string_lossy().to_string());
+                }
+                Err(err) => {
+                    tracing::warn!("跳过静态 UI 路径更新: {}", err);
+                }
+            }
+            let saved_files =
+                crate::ui_automation::macos::ui_paths_store::save_learned_paths(
+                    &app,
+                    &learned,
+                    &json,
+                )
                 .map_err(|err| anyhow::anyhow!(err))?;
-            let rust_path =
-                crate::ui_automation::macos::ax_learn::write_static_paths_rs(&repo_root, &learned)
-                    .map_err(|err| anyhow::anyhow!(err))?;
-            let swift_path =
-                crate::ui_automation::macos::ax_learn::update_swift_paths(&repo_root, &learned)
-                    .map_err(|err| anyhow::anyhow!(err))?;
-            let mut written_files = vec![
-                rust_path.to_string_lossy().to_string(),
-                swift_path.to_string_lossy().to_string(),
-            ];
+            written_files.extend(saved_files);
             if let Some(path) = output_path.as_ref() {
                 std::fs::write(path, &json)?;
                 written_files.push(path.clone());
@@ -422,6 +441,27 @@ async fn learn_wechat_ui_paths(
             Ok(Ok(payload)) => Ok(api_ok(payload)),
             Ok(Err(err)) => Ok(api_err(err.to_string())),
             Err(err) => Ok(api_err(format!("Automation task failed: {}", err))),
+        }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_wechat_ui_paths_status(
+    app: AppHandle,
+    _state: State<'_, SharedState>,
+) -> Result<ApiResponse<UiPathsStatus>, String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        return Ok(api_err("仅支持 macOS"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match crate::ui_automation::macos::ui_paths_store::read_status(&app) {
+            Ok(status) => Ok(api_ok(status)),
+            Err(err) => Ok(api_err(err)),
         }
     }
 }
@@ -853,6 +893,12 @@ pub fn run() {
             app_state.automation = crate::ui_automation::AutomationManager::new(automation);
             let state = Arc::new(Mutex::new(app_state));
             app.manage(state);
+            #[cfg(target_os = "macos")]
+            if let Err(err) =
+                crate::ui_automation::macos::ui_paths_store::load_from_disk(app.handle())
+            {
+                warn!("加载微信 UI 路径失败: {}", err);
+            }
             adjust_window_size(app.handle());
             info!("WeReply 启动完成");
             Ok(())
@@ -877,6 +923,7 @@ pub fn run() {
             diagnose_deepseek,
             list_models,
             learn_wechat_ui_paths,
+            get_wechat_ui_paths_status,
             set_deepseek_model
         ])
         .run(tauri::generate_context!())

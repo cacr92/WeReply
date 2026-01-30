@@ -58,7 +58,10 @@ pub fn find_wechat_app(provider: &dyn AxProvider) -> Option<String> {
 #[allow(unexpected_cfgs)]
 mod native {
     use super::*;
-    use crate::ui_automation::macos::ax_path::{resolve_path, AxNodeInfo, AxPathStep};
+    use crate::ui_automation::macos::ax_path::{
+        resolve_owned_path as resolve_owned_path_impl, resolve_path, AxNodeInfo, AxPathStep,
+        OwnedAxPathStep,
+    };
     use crate::ui_automation::macos::ax_snapshot::{self, AxSnapshotInfo, AxSnapshotRect};
     use core_foundation::array::{CFArray, CFArrayRef};
     use core_foundation::base::{CFRelease, CFRetain, CFTypeRef, TCFType};
@@ -309,6 +312,19 @@ mod native {
         }
         None
     }
+
+    pub fn resolve_owned_path(element: &AxElement, steps: &[OwnedAxPathStep]) -> Option<AxElement> {
+        resolve_owned_path_impl(
+            element.clone(),
+            steps,
+            |item| AxNodeInfo {
+                role: role(item),
+                title: title(item),
+            },
+            children,
+        )
+    }
+
 
     pub fn role(element: &AxElement) -> Option<String> {
         copy_attribute_string(element, &cfstr("AXRole"))

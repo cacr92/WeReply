@@ -42,6 +42,7 @@ impl MockAxInputWriter {
 pub mod ax {
     use crate::ui_automation::macos::ax::{self, AxElement};
     use crate::ui_automation::macos::static_ui_paths;
+    use crate::ui_automation::macos::ui_paths_store;
     use anyhow::{anyhow, Result};
 
     pub struct AxInputWriter {
@@ -56,7 +57,9 @@ pub mod ax {
         }
 
         pub fn write(&self, text: &str) -> Result<()> {
-            let input = ax::resolve_any_path(&self.window, static_ui_paths::INPUT_PATHS)
+            let input = ui_paths_store::get_paths()
+                .and_then(|paths| ax::resolve_owned_path(&self.window, &paths.input))
+                .or_else(|| ax::resolve_any_path(&self.window, static_ui_paths::INPUT_PATHS))
                 .or_else(|| {
                     if static_ui_paths::allow_dynamic_scan() {
                         ax::find_input_element(&self.window, 8)

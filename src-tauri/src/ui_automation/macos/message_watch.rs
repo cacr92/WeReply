@@ -34,6 +34,7 @@ impl MockAxWatcher {
 pub mod ax {
     use crate::ui_automation::macos::ax::{self, AxElement};
     use crate::ui_automation::macos::static_ui_paths;
+    use crate::ui_automation::macos::ui_paths_store;
     use anyhow::{anyhow, Result};
     use super::{pick_row_text, score_message_list};
     #[cfg(test)]
@@ -76,6 +77,11 @@ pub mod ax {
     }
 
     fn find_message_list(window: &AxElement) -> Result<AxElement> {
+        if let Some(paths) = ui_paths_store::get_paths() {
+            if let Some(list) = ax::resolve_owned_path(window, &paths.message_list) {
+                return Ok(list);
+            }
+        }
         if let Some(list) = ax::resolve_any_path(window, static_ui_paths::MESSAGE_LIST_PATHS) {
             return Ok(list);
         }

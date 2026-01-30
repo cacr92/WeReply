@@ -15,6 +15,7 @@ import type {
   Status,
   Suggestion,
   SuggestionsUpdated,
+  UiPathsStatus,
 } from "./bindings";
 import { commands } from "./bindings";
 import type { ApiKeyStatus } from "./utils/apiKey";
@@ -38,6 +39,7 @@ import { filterRecentChats, type RecentChat } from "./utils/recentChats";
 import { normalizeReplyText } from "./utils/reply";
 import { createStatusState, statusReducer } from "./utils/status";
 import { notify } from "./utils/notify";
+import { formatUiPathsStatus } from "./utils/uiPathsStatus";
 
 const DEFAULT_STATUS: Status = {
   state: "idle",
@@ -80,15 +82,21 @@ function App() {
   const [diagnostics, setDiagnostics] = useState<DeepseekDiagnostics | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [uiTreeLoading, setUiTreeLoading] = useState(false);
+  const [uiPathsStatus, setUiPathsStatus] = useState<UiPathsStatus | null>(null);
+  const [uiPathsStatusError, setUiPathsStatusError] = useState<string | null>(null);
   const diagnosticsSummary = summarizeDiagnostics(diagnostics, diagnosticsError || undefined);
+  const isMacos = status.platform === "macos";
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [statusRes, keyRes, configRes, targetsRes] = await Promise.all([
+      const [statusRes, keyRes, configRes, targetsRes, uiPathsRes] =
+        await Promise.all([
         commands.getStatus(),
         commands.getApiKeyStatus(),
         commands.getConfig(),
         commands.getListenTargets(),
+        commands.getWeChatUiPathsStatus(),
       ]);
       if (statusRes.success && statusRes.data) {
         dispatchStatus({ type: "bootstrap", status: statusRes.data });
@@ -110,6 +118,12 @@ function App() {
         const normalized = normalizeListenTargetList(targetsRes.data);
         setListenTargets(normalized);
         setListenDirty(false);
+      }
+      if (uiPathsRes.success && uiPathsRes.data) {
+        setUiPathsStatus(uiPathsRes.data);
+        setUiPathsStatusError(null);
+      } else if (statusRes.success && statusRes.data?.platform === "macos") {
+        setUiPathsStatusError(uiPathsRes.message || "获取失败");
       }
     };
     void bootstrap();
@@ -429,6 +443,52 @@ function App() {
     [selectedModel],
   );
 
+  const refreshUiPathsStatus = useCallback(async (showError: boolean) => {
+    const res = await commands.getWeChatUiPathsStatus();
+    if (res.success && res.data) {
+      setUiPathsStatus(res.data);
+      setUiPathsStatusError(null);
+      return;
+    }
+    if (showError) {
+      setUiPathsStatusError(res.message || "获取失败");
+    }
+  }, []);
+
+  const handleCaptureUiTree = useCallback(async () => {
+    if (!isMacos) {
+      notify.warning("仅支持 macOS");
+      return;
+    }
+    setUiTreeLoading(true);
+    try {
+      const res = await commands.learnWeChatUiPaths(12);
+      if (res.success && res.data) {
+        const count = res.data.written_files.length;
+        notify.success("已保存微信 UI 树", {
+          detail: count > 0 ? `已写入 ${count} 个文件` : undefined,
+        });
+        await refreshUiPathsStatus(true);
+      } else {
+        notify.error("获取微信 UI 树失败", { detail: res.message });
+      }
+    } catch (err) {
+      notify.error("获取微信 UI 树失败", { detail: err });
+    } finally {
+      setUiTreeLoading(false);
+    }
+  }, [isMacos, refreshUiPathsStatus]);
+
+  const uiTreeStatusText = useMemo(() => {
+    if (!isMacos) {
+      return "仅支持 macOS";
+    }
+    if (uiPathsStatusError) {
+      return "获取失败";
+    }
+    return formatUiPathsStatus(uiPathsStatus);
+  }, [isMacos, uiPathsStatus, uiPathsStatusError]);
+
   return (
     <main className="app">
       <header className="topbar">
@@ -445,6 +505,14 @@ function App() {
           </button>
         </div>
         <div className="top-actions">
+          <button
+            className="ghost"
+            onClick={handleCaptureUiTree}
+            disabled={!isMacos || uiTreeLoading}
+          >
+            {uiTreeLoading ? "获取中..." : "获取 UI 树"}
+          </button>
+          <span className="ui-tree-status">{uiTreeStatusText}</span>
           <button className="ghost" onClick={() => setListenModalOpen(true)}>
             监听对象
           </button>
